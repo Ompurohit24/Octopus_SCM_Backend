@@ -1,0 +1,153 @@
+from datetime import datetime
+
+from backend.models.import_job import ImportJobCreate, ImportJobUpdate
+from backend.repositories.counter_repository import counter_repository
+from backend.repositories.import_job_repository import import_job_repository
+from backend.utils.serializer import serialize, serialize_list
+from backend.repositories.customer_repository import customer_repository
+from backend.services.email_service import email_service
+from backend.repositories.import_workflow_repository import (
+    import_workflow_repository,
+)
+class ImportJobService:
+
+    @staticmethod
+    def generate_job_number():
+        number = counter_repository.next("import_job")
+        return f"IMP-{number:05d}"
+
+    @staticmethod
+    def create(job: ImportJobCreate, user_id: str):
+
+        job_number = ImportJobService.generate_job_number()
+
+        customer = customer_repository.find_by_name(job.forwarder)
+
+        if not customer:
+            raise ValueError("Forwarder not found")
+
+        document = job.model_dump()
+        document["forwarder_name"] = customer["customer_name"]
+
+        document.update(
+            {
+                "job_number": job_number,
+                "is_active": True,
+                "is_deleted": False,
+                "created_by": user_id,
+                "updated_by": user_id,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+        )
+
+        result = import_job_repository.create(document)
+
+        document["_id"] = result.inserted_id
+
+        workflow = {
+            "job_id": str(result.inserted_id),
+            "job_number": job_number,
+            "party_name": customer["customer_name"],
+            "bl_no": job.bl_no,
+            "containers": f"{job.no_of_cntr} x {job.size}",
+
+            "checklist": "Pending",
+            "igm_status": "Pending",
+            "goods_registration": "Pending",
+            "boe_copy_mailed": "Pending",
+            "original_documents": "Pending",
+            "duty_payment": "Pending",
+            "out_of_charge": "Pending",
+            "oc_mail_sent": "Pending",
+            "liner_invoice_received": "Pending",
+            "liner_payment": "Pending",
+            "payment_confirmation": "Pending",
+            "empty_container_return": "Pending",
+            "container_unloaded": "Pending",
+            "detention": "Pending",
+            "job_closed": "Pending",
+
+            "current_stage": "checklist",
+
+            "is_active": True,
+            "is_deleted": False,
+
+            "created_by": user_id,
+            "updated_by": user_id,
+
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+
+        import_workflow_repository.create(workflow)
+        try:
+            email_service.send_import_job_created_email(
+                customer["email"],
+                document,
+            )
+        except Exception as e:
+            print(e)
+        return serialize(document)
+
+    @staticmethod
+    def get_all(
+        skip: int = 0,
+        limit: int = 20,
+        search: str = "",
+    ):
+
+        jobs = import_job_repository.search(
+            search=search,
+            skip=skip,
+            limit=limit,
+        )
+
+        return {
+            "total": import_job_repository.count(
+                {
+                    "is_deleted": False
+                }
+            ),
+            "skip": skip,
+            "limit": limit,
+            "items": serialize_list(jobs),
+        }
+
+    @staticmethod
+    def get_by_id(job_id: str):
+
+        job = import_job_repository.find_by_id(job_id)
+
+        if not job:
+            raise ValueError("Import Job not found")
+
+        return serialize(job)
+
+    @staticmethod
+    def update(
+        job_id: str,
+        job: ImportJobUpdate,
+    ):
+
+        data = job.model_dump(exclude_unset=True)
+
+        data["updated_at"] = datetime.utcnow()
+
+        import_job_repository.update(
+            job_id,
+            data,
+        )
+
+        updated = import_job_repository.find_by_id(job_id)
+
+        return serialize(updated)
+
+    @staticmethod
+    def delete(job_id: str):
+
+        import_job_repository.soft_delete(job_id)
+
+        return {
+            "message": "Import Job deleted successfully"
+        }
