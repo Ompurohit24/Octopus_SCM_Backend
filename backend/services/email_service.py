@@ -50,12 +50,20 @@ class EmailService:
 
         message.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+        with smtplib.SMTP(
+                settings.SMTP_HOST,
+                int(settings.SMTP_PORT),
+                timeout=30,
+        ) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
+
             server.login(
                 settings.SMTP_USERNAME,
                 settings.SMTP_PASSWORD,
             )
+
             server.send_message(message)
 
     @staticmethod
@@ -159,12 +167,20 @@ class EmailService:
 
         message.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+        with smtplib.SMTP(
+                settings.SMTP_HOST,
+                int(settings.SMTP_PORT),
+                timeout=30,
+        ) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
+
             server.login(
                 settings.SMTP_USERNAME,
                 settings.SMTP_PASSWORD,
             )
+
             server.send_message(message)
 
 
