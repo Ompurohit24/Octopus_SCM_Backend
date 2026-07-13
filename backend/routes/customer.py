@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
+# from fastapi import APIRouter, Depends
 from fastapi import HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks
 from backend.models.customer import CustomerCreate, CustomerUpdate
 from backend.services.customer_service import CustomerService
 from backend.utils.dependencies import get_current_user
@@ -10,16 +11,26 @@ router = APIRouter(
 )
 
 
+# @router.post("")
+# def create_customer(
+#     customer: CustomerCreate,
+#     user=Depends(get_current_user),
+# ):
+#     return CustomerService.create(
+#         customer,
+#         user["sub"],
+#     )
 @router.post("")
 def create_customer(
     customer: CustomerCreate,
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_user),
 ):
     return CustomerService.create(
         customer,
         user["sub"],
+        background_tasks,
     )
-
 
 @router.get("")
 def get_customers(

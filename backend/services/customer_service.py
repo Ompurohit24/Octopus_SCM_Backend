@@ -1,5 +1,7 @@
 from datetime import datetime
-
+from fastapi import BackgroundTasks
+from pymongo.errors import DuplicateKeyError
+from backend.database.mongo import client
 from backend.models.customer import CustomerCreate, CustomerUpdate
 from backend.repositories.counter_repository import counter_repository
 from backend.repositories.customer_repository import customer_repository
@@ -9,64 +11,96 @@ from backend.utils.serializer import serialize, serialize_list
 
 class CustomerService:
 
+    # @staticmethod
+    # def generate_customer_code():
+    #     number = counter_repository.next("customer")
+    #     return f"CUS-{number:04d}"
+
     @staticmethod
-    def generate_customer_code():
-        number = counter_repository.next("customer")
+    def generate_customer_code(session=None):
+        number = counter_repository.next(
+            "customer",
+            session=session,
+        )
         return f"CUS-{number:04d}"
 
+
+    # @staticmethod
+    # def create(customer: CustomerCreate, user_id: str):
+    #
+    #     code = CustomerService.generate_customer_code()
+    #
+    #     document = customer.model_dump()
+    #
+    #     document.update(
+    #         {
+    #             "customer_code": code,
+    #             "is_active": True,
+    #             "is_deleted": False,
+    #             "created_by": user_id,
+    #             "updated_by": user_id,
+    #             "created_at": datetime.utcnow(),
+    #             "updated_at": datetime.utcnow(),
+    #         }
+    #     )
+    #
+    #     result = customer_repository.create(document)
+    #
+    #     document["_id"] = result.inserted_id
+    #
+    #     try:
+    #         email_service.send_customer_created_email(document)
+    #     except Exception as e:
+    #         print(f"Email sending failed: {e}")
+    #
+    #     return serialize(document)
     @staticmethod
-    def create(customer: CustomerCreate, user_id: str):
-
-        code = CustomerService.generate_customer_code()
-
-        document = customer.model_dump()
-
-        document.update(
-            {
-                "customer_code": code,
-                "is_active": True,
-                "is_deleted": False,
-                "created_by": user_id,
-                "updated_by": user_id,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-            }
-        )
-
-        result = customer_repository.create(document)
-
-        document["_id"] = result.inserted_id
-
+    def create(
+            customer: CustomerCreate,
+            user_id: str,
+            background_tasks: BackgroundTasks,
+    ):
         try:
-            email_service.send_customer_created_email(document)
-        except Exception as e:
-            print(f"Email sending failed: {e}")
+            with client.start_session() as session:
+                with session.start_transaction():
+                    code = CustomerService.generate_customer_code(
+                        session=session,
+                    )
+
+                    document = customer.model_dump()
+
+                    document.update(
+                        {
+                            "customer_code": code,
+                            "is_active": True,
+                            "is_deleted": False,
+                            "created_by": user_id,
+                            "updated_by": user_id,
+                            "created_at": datetime.utcnow(),
+                            "updated_at": datetime.utcnow(),
+                        }
+                    )
+
+                    result = customer_repository.create(
+                        document,
+                        session=session,
+                    )
+
+                    document["_id"] = result.inserted_id
+
+        except DuplicateKeyError:
+            raise ValueError("Customer already exists.")
+
+        except Exception:
+            raise
+
+        background_tasks.add_task(
+            email_service.send_customer_created_email,
+            document,
+        )
 
         return serialize(document)
 
-    @staticmethod
-    def get_all(
-        skip: int = 0,
-        limit: int = 20,
-        search: str = "",
-    ):
-
-        customers = customer_repository.search(
-            search=search,
-            skip=skip,
-            limit=limit,
-        )
-
-        return {
-            "total": customer_repository.count(
-                {
-                    "is_deleted": False
-                }
-            ),
-            "skip": skip,
-            "limit": limit,
-            "items": serialize_list(customers),
-        }
 
     @staticmethod
     def get_by_id(customer_id: str):

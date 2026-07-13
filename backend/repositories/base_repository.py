@@ -9,8 +9,13 @@ class BaseRepository:
     def __init__(self, collection):
         self.collection = collection
 
-    def create(self, document):
-        return self.collection.insert_one(document)
+    # def create(self, document):
+    #     return self.collection.insert_one(document)
+    def create(self, document, session=None):
+        return self.collection.insert_one(
+            document,
+            session=session,
+        )
 
     def find_by_id(self, document_id):
         return self.collection.find_one({
@@ -44,16 +49,18 @@ class BaseRepository:
 
         return self.collection.count_documents(query)
 
-    def update(self, document_id, data):
+    def update(self, document_id, data, session=None):
 
         data["updated_at"] = datetime.utcnow()
 
         return self.collection.update_one(
             {"_id": ObjectId(document_id)},
             {"$set": data},
+            session=session,
         )
 
-    def soft_delete(self, document_id):
+    def soft_delete(self, document_id, session=None):
+
 
         return self.collection.update_one(
             {"_id": ObjectId(document_id)},
@@ -64,4 +71,5 @@ class BaseRepository:
                     "updated_at": datetime.utcnow(),
                 }
             },
+            session=session,
         )
