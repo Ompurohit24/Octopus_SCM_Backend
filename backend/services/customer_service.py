@@ -103,6 +103,30 @@ class CustomerService:
 
 
     @staticmethod
+    def get_all(
+        skip: int = 0,
+        limit: int = 20,
+        search: str = "",
+    ):
+
+        customers = customer_repository.search(
+            search=search,
+            skip=skip,
+            limit=limit,
+        )
+
+        return {
+            "total": customer_repository.count(
+                {
+                    "is_deleted": False
+                }
+            ),
+            "skip": skip,
+            "limit": limit,
+            "items": serialize_list(customers),
+        }
+
+    @staticmethod
     def get_by_id(customer_id: str):
 
         customer = customer_repository.find_by_id(customer_id)
