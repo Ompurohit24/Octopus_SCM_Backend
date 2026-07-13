@@ -24,6 +24,12 @@ class CustomerService:
         )
         return f"CUS-{number:04d}"
 
+    @staticmethod
+    def get_next_customer_code():
+
+        counter = counter_repository.current("customer")
+
+        return f"CUS-{counter + 1:04d}"
 
     # @staticmethod
     # def create(customer: CustomerCreate, user_id: str):

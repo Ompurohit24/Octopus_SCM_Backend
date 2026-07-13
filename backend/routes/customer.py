@@ -32,6 +32,12 @@ def create_customer(
         background_tasks,
     )
 
+@router.get("/next-code")
+def get_next_customer_code():
+    return {
+        "customer_code": CustomerService.get_next_customer_code()
+    }
+
 @router.get("")
 def get_customers(
     skip: int = 0,

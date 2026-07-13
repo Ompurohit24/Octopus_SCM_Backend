@@ -21,6 +21,19 @@ class CounterRepository:
         )
 
     @staticmethod
+    def current(sequence_name: str):
+        result = counters.find_one(
+            {
+                "_id": sequence_name
+            }
+        )
+
+        if not result:
+            return 0
+
+        return result["value"]
+
+    @staticmethod
     def next(sequence_name: str, session=None):
 
         result = counters.find_one_and_update(
