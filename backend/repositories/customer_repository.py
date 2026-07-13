@@ -23,11 +23,28 @@ class CustomerRepository(BaseRepository):
         )
 
         self.collection.create_index(
-            [("email", ASCENDING)]
+            [("email", ASCENDING)],
+            unique=True,
         )
 
         self.collection.create_index(
-            [("phone", ASCENDING)]
+            [("phone", ASCENDING)],
+            unique=True,
+        )
+
+        self.collection.create_index(
+            [("gstin", ASCENDING)],
+            unique=True,
+        )
+
+        self.collection.create_index(
+            [("pan", ASCENDING)],
+            unique=True,
+        )
+
+        self.collection.create_index(
+            [("tan", ASCENDING)],
+            unique=True,
         )
 
     def find_by_code(self, code):
@@ -46,6 +63,10 @@ class CustomerRepository(BaseRepository):
                 "is_deleted": False,
             }
         )
+
+    def find_one(self, query):
+        return self.collection.find_one(query)
+
     def search(
         self,
         search="",

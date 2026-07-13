@@ -17,7 +17,21 @@ class ImportJobService:
         return f"IMP-{number:05d}"
 
     @staticmethod
+    def get_next_job_number():
+
+        counter = counter_repository.current("import_job")
+
+        return f"IMP-{counter + 1:05d}"
+
+    @staticmethod
     def create(job: ImportJobCreate, user_id: str):
+
+        existing_job = import_job_repository.find_by_bl_no(job.bl_no)
+
+        if existing_job:
+            raise ValueError(
+                f"Import Job already exists for BL No '{job.bl_no}'."
+            )
 
         job_number = ImportJobService.generate_job_number()
 

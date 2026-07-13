@@ -1,4 +1,6 @@
 from datetime import datetime
+from pathlib import Path
+import shutil
 from fastapi import BackgroundTasks
 from pymongo.errors import DuplicateKeyError
 from backend.database.mongo import client
@@ -8,6 +10,9 @@ from backend.repositories.customer_repository import customer_repository
 from backend.services.email_service import email_service
 from backend.utils.serializer import serialize, serialize_list
 
+
+KYC_ROOT = Path("KYC")
+KYC_ROOT.mkdir(exist_ok=True)
 
 class CustomerService:
 
@@ -31,40 +36,44 @@ class CustomerService:
 
         return f"CUS-{counter + 1:04d}"
 
-    # @staticmethod
-    # def create(customer: CustomerCreate, user_id: str):
-    #
-    #     code = CustomerService.generate_customer_code()
-    #
-    #     document = customer.model_dump()
-    #
-    #     document.update(
-    #         {
-    #             "customer_code": code,
-    #             "is_active": True,
-    #             "is_deleted": False,
-    #             "created_by": user_id,
-    #             "updated_by": user_id,
-    #             "created_at": datetime.utcnow(),
-    #             "updated_at": datetime.utcnow(),
-    #         }
-    #     )
-    #
-    #     result = customer_repository.create(document)
-    #
-    #     document["_id"] = result.inserted_id
-    #
-    #     try:
-    #         email_service.send_customer_created_email(document)
-    #     except Exception as e:
-    #         print(f"Email sending failed: {e}")
-    #
-    #     return serialize(document)
+    @staticmethod
+    def save_kyc_documents(
+            customer_name: str,
+            gst_document,
+            pan_document,
+    ):
+        customer_folder = KYC_ROOT / customer_name
+        customer_folder.mkdir(parents=True, exist_ok=True)
+
+        gst_path = None
+        pan_path = None
+
+        if gst_document:
+            extension = Path(gst_document.filename).suffix
+            gst_path = customer_folder / f"GST{extension}"
+
+            with open(gst_path, "wb") as buffer:
+                shutil.copyfileobj(gst_document.file, buffer)
+
+        if pan_document:
+            extension = Path(pan_document.filename).suffix
+            pan_path = customer_folder / f"PAN{extension}"
+
+            with open(pan_path, "wb") as buffer:
+                shutil.copyfileobj(pan_document.file, buffer)
+
+        return (
+            str(gst_path) if gst_path else None,
+            str(pan_path) if pan_path else None,
+        )
+
     @staticmethod
     def create(
             customer: CustomerCreate,
             user_id: str,
             background_tasks: BackgroundTasks,
+            gst_document=None,
+            pan_document=None,
     ):
         try:
             with client.start_session() as session:
@@ -75,6 +84,34 @@ class CustomerService:
 
                     document = customer.model_dump()
 
+                    duplicates = [
+                        ("email", "Email"),
+                        ("phone", "Phone Number"),
+                        ("gstin", "GSTIN"),
+                        ("pan", "PAN"),
+                        ("tan", "TAN"),
+                    ]
+
+                    for field, label in duplicates:
+                        value = document.get(field)
+
+                        if not value:
+                            continue
+
+                        existing = customer_repository.find_one({
+                            field: value,
+                            "is_deleted": False,
+                        })
+
+                        if existing:
+                            raise ValueError(f"{label} already exists.")
+
+                    gst_path, pan_path = CustomerService.save_kyc_documents(
+                        customer.customer_name,
+                        gst_document,
+                        pan_document,
+                    )
+
                     document.update(
                         {
                             "customer_code": code,
@@ -84,6 +121,8 @@ class CustomerService:
                             "updated_by": user_id,
                             "created_at": datetime.utcnow(),
                             "updated_at": datetime.utcnow(),
+                            "gst_document": gst_path,
+                            "pan_document": pan_path,
                         }
                     )
 
@@ -94,8 +133,10 @@ class CustomerService:
 
                     document["_id"] = result.inserted_id
 
-        except DuplicateKeyError:
-            raise ValueError("Customer already exists.")
+
+        except DuplicateKeyError as e:
+
+            raise ValueError(str(e))
 
         except Exception:
             raise

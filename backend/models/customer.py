@@ -8,10 +8,18 @@ class CustomerBase(BaseModel):
     customer_name: str = Field(..., min_length=2, max_length=150)
     address: str
     email: EmailStr
+    countryCode: str = "+91"
     phone: str
+
     gstin: str
+    gst_document: Optional[str] = None
+
     pan: str
+    pan_document: Optional[str] = None
+
     tan: str
+
+
 
 
 class CustomerCreate(CustomerBase):

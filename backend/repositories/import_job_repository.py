@@ -19,7 +19,8 @@ class ImportJobRepository(BaseRepository):
         )
 
         self.collection.create_index(
-            [("bl_no", ASCENDING)]
+            [("bl_no", ASCENDING)],
+            unique=True,
         )
 
         self.collection.create_index(
@@ -39,6 +40,14 @@ class ImportJobRepository(BaseRepository):
         return self.collection.find_one(
             {
                 "job_number": job_number,
+                "is_deleted": False,
+            }
+        )
+
+    def find_by_bl_no(self, bl_no: str):
+        return self.collection.find_one(
+            {
+                "bl_no": bl_no,
                 "is_deleted": False,
             }
         )
