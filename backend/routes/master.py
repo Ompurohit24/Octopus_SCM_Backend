@@ -7,6 +7,22 @@ router = APIRouter(
     tags=["Masters"],
 )
 
+from backend.services.line_name_service import (
+    line_name_service,
+)
+@router.get("/line-names")
+def get_line_names():
+    return dropdown_service.get_line_names()
+
+
+@router.post("/line-names")
+def create_line_name(name: str):
+    return dropdown_service.create_line_name(name)
+
+
+@router.delete("/line-names/{name}")
+def delete_line_name(name: str):
+    return dropdown_service.delete_line_name(name)
 
 @router.get("/cfs")
 def get_cfs(
@@ -21,6 +37,25 @@ def get_transporters(
 ):
     return dropdown_service.get_transporters(search)
 
+@router.get("/line-names")
+def get_line_names(
+    search: str = "",
+):
+    return line_name_service.get_all(search)
+
+
+@router.post("/line-names")
+def create_line_name(
+    name: str,
+):
+    return line_name_service.create(name)
+
+
+@router.delete("/line-names/{name}")
+def delete_line_name(
+    name: str,
+):
+    return line_name_service.delete(name)
 
 @router.get("/other-gov-agency-types")
 def get_other_gov_agency_types(

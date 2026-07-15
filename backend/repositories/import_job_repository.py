@@ -59,6 +59,14 @@ class ImportJobRepository(BaseRepository):
                 "is_deleted": False,
             }
         )
+
+    def is_line_name_in_use(self, name: str):
+        return self.collection.find_one(
+            {
+                "line_name": name,
+                "is_deleted": False,
+            }
+        ) is not None
     def search(
         self,
         search="",

@@ -85,6 +85,7 @@ class CustomerService:
                     document = customer.model_dump()
 
                     duplicates = [
+                        ("customer_name", "Customer Name"),
                         ("email", "Email"),
                         ("phone", "Phone Number"),
                         ("gstin", "GSTIN"),
@@ -98,10 +99,23 @@ class CustomerService:
                         if not value:
                             continue
 
-                        existing = customer_repository.find_one({
-                            field: value,
-                            "is_deleted": False,
-                        })
+                        if field == "customer_name":
+                            existing = customer_repository.find_one(
+                                {
+                                    "customer_name": {
+                                        "$regex": f"^{value.strip()}$",
+                                        "$options": "i",
+                                    },
+                                    "is_deleted": False,
+                                }
+                            )
+                        else:
+                            existing = customer_repository.find_one(
+                                {
+                                    field: value,
+                                    "is_deleted": False,
+                                }
+                            )
 
                         if existing:
                             raise ValueError(f"{label} already exists.")

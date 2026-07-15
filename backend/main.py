@@ -40,7 +40,9 @@ from backend.routes.transporter import router as transporter_router
 from backend.routes.other_gov_agency_type import (
     router as other_gov_agency_type_router,
 )
-
+from backend.repositories.line_name_repository import (
+    line_name_repository,
+)
 from backend.utils.dependencies import get_current_user
 
 
@@ -61,7 +63,7 @@ async def lifespan(app: FastAPI):
     cfs_repository.create_indexes()
     transporter_repository.create_indexes()
     other_gov_agency_type_repository.create_indexes()
-
+    line_name_repository.create_indexes()
     seed_masters()
 
     yield
