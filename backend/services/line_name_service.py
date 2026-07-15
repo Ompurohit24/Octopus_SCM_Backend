@@ -1,5 +1,4 @@
 from datetime import datetime
-from pymongo.errors import DuplicateKeyError
 from backend.repositories.line_name_repository import (
     line_name_repository,
 )
@@ -28,11 +27,6 @@ class LineNameService:
         if not name:
             raise ValueError("Line Name is required.")
 
-        existing = line_name_repository.find_by_name(name)
-
-        if existing:
-            raise ValueError("Line Name already exists.")
-
         document = {
             "name": name,
             "is_active": True,
@@ -41,10 +35,7 @@ class LineNameService:
             "updated_at": datetime.utcnow(),
         }
 
-        try:
-            result = line_name_repository.create(document)
-        except DuplicateKeyError:
-            raise ValueError("Line Name already exists.")
+        result = line_name_repository.create(document)
         document["_id"] = result.inserted_id
 
         return serialize(document)
