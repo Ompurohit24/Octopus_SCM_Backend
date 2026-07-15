@@ -1,5 +1,5 @@
 from pymongo import ASCENDING
-
+from datetime import datetime
 from backend.database.mongo import db
 from backend.repositories.base_repository import BaseRepository
 
@@ -50,6 +50,27 @@ class LineNameRepository(BaseRepository):
             limit=limit,
             sort_field="name",
         )
+
+    def update(
+            self,
+            old_name: str,
+            new_name: str,
+    ):
+        result = self.collection.update_one(
+            {
+                "name": old_name,
+                "is_deleted": False,
+            },
+            {
+                "$set": {
+                    "name": new_name,
+                    "updated_at": datetime.utcnow(),
+                }
+            },
+        )
+
+        if result.matched_count == 0:
+            raise ValueError("Line Name not found.")
 
 
 line_name_repository = LineNameRepository()

@@ -42,6 +42,22 @@ def delete_line_name(name: str):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
+@router.put("/line-names/{old_name}")
+def update_line_name(
+    old_name: str,
+    new_name: str,
+):
+    try:
+        return line_name_service.update(
+            old_name,
+            new_name,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        )
+
 @router.get("/other-gov-agency-types")
 def get_other_gov_agency_types(
     search: str = "",

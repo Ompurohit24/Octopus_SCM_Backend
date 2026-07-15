@@ -59,5 +59,24 @@ class LineNameService:
             "message": "Line Name deleted successfully."
         }
 
+    @staticmethod
+    def update(
+            old_name: str,
+            new_name: str,
+    ):
+        new_name = new_name.strip()
+
+        if not new_name:
+            raise ValueError("Line Name is required.")
+
+        line_name_repository.update(
+            old_name,
+            new_name,
+        )
+
+        return {
+            "message": "Line Name updated successfully."
+        }
+
 
 line_name_service = LineNameService()
