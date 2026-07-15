@@ -10,19 +10,6 @@ router = APIRouter(
 from backend.services.line_name_service import (
     line_name_service,
 )
-@router.get("/line-names")
-def get_line_names():
-    return dropdown_service.get_line_names()
-
-
-@router.post("/line-names")
-def create_line_name(name: str):
-    return dropdown_service.create_line_name(name)
-
-
-@router.delete("/line-names/{name}")
-def delete_line_name(name: str):
-    return dropdown_service.delete_line_name(name)
 
 @router.get("/cfs")
 def get_cfs(
