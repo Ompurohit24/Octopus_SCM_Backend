@@ -33,11 +33,14 @@ def create_line_name(name: str):
         return line_name_service.create(name)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+from fastapi import HTTPException
+
 @router.delete("/line-names/{name}")
-def delete_line_name(
-    name: str,
-):
-    return line_name_service.delete(name)
+def delete_line_name(name: str):
+    try:
+        return line_name_service.delete(name)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 @router.get("/other-gov-agency-types")
 def get_other_gov_agency_types(
