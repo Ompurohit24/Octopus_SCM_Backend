@@ -14,7 +14,7 @@ class LineNameRepository(BaseRepository):
     def create_indexes(self):
         self.collection.create_index(
             [("name", ASCENDING)],
-            unique=True,
+            # unique=True,
         )
 
     def find_by_name(self, name: str):
