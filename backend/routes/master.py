@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-
+from fastapi import APIRouter, HTTPException
 from backend.services.dropdown_service import dropdown_service
 
 router = APIRouter(
@@ -24,12 +24,12 @@ def get_transporters(
 ):
     return dropdown_service.get_transporters(search)
 
-@router.get("/line-names")
-def get_line_names(
-    search: str = "",
-):
-    return line_name_service.get_all(search)
-
+@router.post("/line-names")
+def create_line_name(name: str):
+    try:
+        return line_name_service.create(name)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 @router.post("/line-names")
 def create_line_name(
