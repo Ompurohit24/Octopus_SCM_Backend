@@ -98,7 +98,7 @@ class ImportWorkflowValidator:
         # ---------------- Other Govt Agency ----------------
 
         if data.get("other_gov_agency") == "Yes":
-            if not data.get("other_gov_agency_type"):
+            if not str(data.get("other_gov_agency_type") or "").strip():
                 raise ValueError("Select Type of Other Gov Agency.")
 
         # ---------------- Assessment ----------------
