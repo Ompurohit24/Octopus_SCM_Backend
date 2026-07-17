@@ -18,6 +18,11 @@ class VendorService:
             limit=limit,
         )
 
+
+
+
+
+
     def get(self, vendor_id: str):
         vendor = vendor_repository.get(vendor_id)
 
