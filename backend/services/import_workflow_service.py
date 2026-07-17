@@ -215,6 +215,7 @@ class ImportWorkflowService:
             stage=stage,
             data=data,
         )
+
         job_update = {}
 
         if "be_no" in data:
@@ -225,9 +226,22 @@ class ImportWorkflowService:
                 job_id,
                 job_update,
             )
+
         updated = import_workflow_repository.find_by_job_id(job_id)
+        print("job_id:", job_id)
+        print("job_update:", job_update)
+
+        result = import_job_repository.update(
+            job_id,
+            job_update,
+        )
+
+        print("matched:", result.matched_count)
+        print("modified:", result.modified_count)
 
         return serialize(updated)
+
+
 
     @staticmethod
     def delete(job_id: str):

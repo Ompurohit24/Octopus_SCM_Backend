@@ -7,6 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 StatusType = Literal["Pending", "Done"]
 YesNoType = Literal["Yes", "No"]
 
+class ServiceItem(BaseModel):
+    status: StatusType = "Pending"
+    tariff: Optional[float] = None
+    unit: Optional[Literal["Container", "BL"]] = None
+
 
 class ImportWorkflowBase(BaseModel):
     job_id: str
@@ -26,7 +31,7 @@ class ImportWorkflowBase(BaseModel):
     goods_registration: StatusType = "Pending"
 
     other_gov_agency: YesNoType = "No"
-    other_gov_agency_type: Optional[str] = None
+    other_gov_agency_type: Optional[dict[str, ServiceItem]] = None
 
     assessment_type: Optional[str] = None
     cfs_name: Optional[str] = None
@@ -87,7 +92,7 @@ class ImportWorkflowUpdate(BaseModel):
     goods_registration: Optional[StatusType] = None
 
     other_gov_agency: Optional[YesNoType] = None
-    other_gov_agency_type: Optional[str] = None
+    other_gov_agency_type: Optional[dict[str, ServiceItem]] = None
 
     assessment_type: Optional[str] = None
     cfs_name: Optional[str] = None

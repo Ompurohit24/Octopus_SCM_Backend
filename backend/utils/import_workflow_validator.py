@@ -97,9 +97,28 @@ class ImportWorkflowValidator:
 
         # ---------------- Other Govt Agency ----------------
 
+        # ---------------- Other Govt Agency ----------------
+
         if data.get("other_gov_agency") == "Yes":
-            if not str(data.get("other_gov_agency_type") or "").strip():
+            services = data.get("other_gov_agency_type") or {}
+
+            if not isinstance(services, dict) or not services:
                 raise ValueError("Select Type of Other Gov Agency.")
+
+            for service_name, service in services.items():
+
+                status = service.get("status")
+
+                if not status:
+                    raise ValueError(f"{service_name}: Status is required.")
+
+                if status == "Done":
+
+                    if service.get("tariff") in (None, ""):
+                        raise ValueError(f"{service_name}: Tariff is required.")
+
+                    if not service.get("unit"):
+                        raise ValueError(f"{service_name}: Unit is required.")
 
         # ---------------- Assessment ----------------
 
