@@ -1,7 +1,7 @@
 from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
 
-from backend.db.mongo import db
+from backend.database.mongo import db
 
 
 class TypeOfServiceRepository:
