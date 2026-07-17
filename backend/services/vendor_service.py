@@ -12,18 +12,11 @@ class VendorService:
         }
 
     def list(self, search: str, skip: int, limit: int):
-        total, items = vendor_repository.list(
-            search,
-            skip,
-            limit,
+        return vendor_repository.search(
+            search=search,
+            skip=skip,
+            limit=limit,
         )
-
-        return {
-            "total": total,
-            "skip": skip,
-            "limit": limit,
-            "items": items,
-        }
 
     def get(self, vendor_id: str):
         vendor = vendor_repository.get(vendor_id)
