@@ -192,6 +192,11 @@ class ImportWorkflowService:
         print("igm_no =", merged.get("igm_no"))
         print("igm_date =", merged.get("igm_date"))
 
+        import pprint
+
+        print("\n========== OTHER GOV AGENCY ==========")
+        pprint.pprint(merged.get("other_gov_agency_type"))
+
         ImportWorkflowValidator.validate(merged)
 
         data["updated_by"] = user_id
