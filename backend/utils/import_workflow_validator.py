@@ -114,11 +114,19 @@ class ImportWorkflowValidator:
 
                 if status == "Done":
 
-                    if service.get("tariff") in (None, ""):
+                    tariff = service.get("tariff")
+                    unit = (service.get("unit") or "").strip()
+
+                    if tariff in (None, ""):
                         raise ValueError(f"{service_name}: Tariff is required.")
 
-                    if not service.get("unit"):
+                    if not unit:
                         raise ValueError(f"{service_name}: Unit is required.")
+
+                    if unit not in ("Container", "BL"):
+                        raise ValueError(
+                            f"{service_name}: Unit must be Container or BL."
+                        )
 
         # ---------------- Assessment ----------------
 

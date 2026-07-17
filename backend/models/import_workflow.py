@@ -10,7 +10,7 @@ YesNoType = Literal["Yes", "No"]
 class ServiceItem(BaseModel):
     status: StatusType = "Pending"
     tariff: Optional[float] = None
-    unit: Optional[Literal["Container", "BL"]] = None
+    unit: Optional[str] = None
 
 
 class ImportWorkflowBase(BaseModel):
