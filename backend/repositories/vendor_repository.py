@@ -61,6 +61,38 @@ class VendorRepository(BaseRepository):
             }
         )
 
+    def find_duplicate(
+            self,
+            *,
+            vendor_name: str,
+            gstin: str,
+            pan: str,
+            email: str,
+            phone: str,
+            exclude_id: str | None = None,
+    ):
+        checks = {
+            "vendor_name": vendor_name,
+            "gstin": gstin,
+            "pan": pan,
+            "email": email,
+            "phone": phone,
+        }
+
+        for field, value in checks.items():
+            query = {
+                field: value,
+                "is_deleted": False,
+            }
+
+            if exclude_id:
+                query["_id"] = {"$ne": self.to_object_id(exclude_id)}
+
+            if self.collection.find_one(query):
+                return field
+
+        return None
+
     def find_one(self, query):
 
         return self.collection.find_one(query)
