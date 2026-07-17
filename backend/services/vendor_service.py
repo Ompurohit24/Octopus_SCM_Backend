@@ -1,36 +1,18 @@
 from fastapi import HTTPException, status
 
-from models.vendor import (
-    VendorCreate,
-    VendorUpdate,
-)
-from repositories.vendor_repository import VendorRepository
+from backend.models.vendor import VendorCreate, VendorUpdate
+from backend.repositories.vendor_repository import vendor_repository
 
 
 class VendorService:
-    def __init__(self, db):
-        self.repository = VendorRepository(db)
-
-    # --------------------------------------------------
-    # Next Vendor Code
-    # --------------------------------------------------
 
     def get_next_code(self):
         return {
-            "vendor_code": self.repository.get_next_code()
+            "vendor_code": vendor_repository.get_next_code()
         }
 
-    # --------------------------------------------------
-    # List
-    # --------------------------------------------------
-
-    def list(
-        self,
-        search: str,
-        skip: int,
-        limit: int,
-    ):
-        total, items = self.repository.list(
+    def list(self, search: str, skip: int, limit: int):
+        total, items = vendor_repository.list(
             search,
             skip,
             limit,
@@ -43,12 +25,8 @@ class VendorService:
             "items": items,
         }
 
-    # --------------------------------------------------
-    # Get
-    # --------------------------------------------------
-
     def get(self, vendor_id: str):
-        vendor = self.repository.get(vendor_id)
+        vendor = vendor_repository.get(vendor_id)
 
         if not vendor:
             raise HTTPException(
@@ -58,16 +36,8 @@ class VendorService:
 
         return vendor
 
-    # --------------------------------------------------
-    # Create
-    # --------------------------------------------------
-
-    def create(
-        self,
-        vendor: VendorCreate,
-        created_by: str | None = None,
-    ):
-        duplicate = self.repository.find_duplicate(
+    def create(self, vendor: VendorCreate):
+        duplicate = vendor_repository.find_duplicate(
             vendor_name=vendor.vendor_name,
             gstin=vendor.gstin,
             pan=vendor.pan,
@@ -75,37 +45,20 @@ class VendorService:
             phone=vendor.phone,
         )
 
-        messages = {
-            "vendor_name": "Vendor Name already exists.",
-            "gstin": "GSTIN already exists.",
-            "pan": "PAN already exists.",
-            "email": "Email already exists.",
-            "phone": "Mobile Number already exists.",
-        }
-
         if duplicate:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=messages[duplicate],
-            )
+            messages = {
+                "vendor_name": "Vendor Name already exists.",
+                "gstin": "GSTIN already exists.",
+                "pan": "PAN already exists.",
+                "email": "Email already exists.",
+                "phone": "Mobile Number already exists.",
+            }
+            raise ValueError(messages[duplicate])
 
-        data = vendor.model_dump()
-        data["created_by"] = created_by
-        data["updated_by"] = created_by
+        return vendor_repository.create(vendor.model_dump())
 
-        return self.repository.create(data)
-
-    # --------------------------------------------------
-    # Update
-    # --------------------------------------------------
-
-    def update(
-        self,
-        vendor_id: str,
-        vendor: VendorUpdate,
-        updated_by: str | None = None,
-    ):
-        existing = self.repository.get(vendor_id)
+    def update(self, vendor_id: str, vendor: VendorUpdate):
+        existing = vendor_repository.get(vendor_id)
 
         if not existing:
             raise HTTPException(
@@ -118,7 +71,7 @@ class VendorService:
             **vendor.model_dump(exclude_unset=True),
         }
 
-        duplicate = self.repository.find_duplicate(
+        duplicate = vendor_repository.find_duplicate(
             vendor_name=merged["vendor_name"],
             gstin=merged["gstin"],
             pan=merged["pan"],
@@ -127,43 +80,33 @@ class VendorService:
             exclude_id=vendor_id,
         )
 
-        messages = {
-            "vendor_name": "Vendor Name already exists.",
-            "gstin": "GSTIN already exists.",
-            "pan": "PAN already exists.",
-            "email": "Email already exists.",
-            "phone": "Mobile Number already exists.",
-        }
-
         if duplicate:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=messages[duplicate],
-            )
+            messages = {
+                "vendor_name": "Vendor Name already exists.",
+                "gstin": "GSTIN already exists.",
+                "pan": "PAN already exists.",
+                "email": "Email already exists.",
+                "phone": "Mobile Number already exists.",
+            }
+            raise ValueError(messages[duplicate])
 
-        data = vendor.model_dump(exclude_unset=True)
-        data["updated_by"] = updated_by
-
-        return self.repository.update(
+        return vendor_repository.update(
             vendor_id,
-            data,
+            vendor.model_dump(exclude_unset=True),
         )
 
-    # --------------------------------------------------
-    # Delete
-    # --------------------------------------------------
-
     def delete(self, vendor_id: str):
-        existing = self.repository.get(vendor_id)
-
-        if not existing:
+        if not vendor_repository.get(vendor_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Vendor not found.",
             )
 
-        self.repository.delete(vendor_id)
+        vendor_repository.delete(vendor_id)
 
         return {
             "message": "Vendor deleted successfully."
         }
+
+
+vendor_service = VendorService()
