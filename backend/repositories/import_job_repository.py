@@ -1,5 +1,5 @@
 from pymongo import ASCENDING
-
+from bson import ObjectId
 from backend.database.mongo import db
 from backend.repositories.base_repository import BaseRepository
 
@@ -118,6 +118,21 @@ class ImportJobRepository(BaseRepository):
             skip=skip,
             limit=limit,
             sort_field="job_number",
+        )
+
+    def update_by_id(
+            self,
+            job_id: str,
+            data: dict,
+    ):
+        self.collection.update_one(
+            {
+                "_id": ObjectId(job_id),
+                "is_deleted": False,
+            },
+            {
+                "$set": data,
+            },
         )
 
 

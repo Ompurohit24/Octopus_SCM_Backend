@@ -215,7 +215,16 @@ class ImportWorkflowService:
             stage=stage,
             data=data,
         )
+        job_update = {}
 
+        if "be_no" in data:
+            job_update["be_no"] = data["be_no"]
+
+        if job_update:
+            import_job_repository.update(
+                job_id,
+                job_update,
+            )
         updated = import_workflow_repository.find_by_job_id(job_id)
 
         return serialize(updated)
@@ -370,6 +379,7 @@ class ImportWorkflowService:
                     "id": str(job["_id"]),
                     "job_number": job["job_number"],
                     "bl_no": job["bl_no"],
+                    "be_no": job.get("be_no"),
                     "party": job["forwarder"],
                     "containers": f'{job["no_of_cntr"]} x {job["size"]}',
                 }

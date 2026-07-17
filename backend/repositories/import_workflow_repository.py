@@ -80,6 +80,12 @@ class ImportWorkflowRepository(BaseRepository):
                         "$options": "i",
                     }
                 },
+                {
+                    "be_no": {
+                        "$regex": search,
+                        "$options": "i",
+                    }
+                },
             ]
 
         return self.list(
