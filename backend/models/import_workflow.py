@@ -33,6 +33,8 @@ class ImportWorkflowBase(BaseModel):
     other_gov_agency: YesNoType = "No"
     other_gov_agency_type: Optional[dict[str, ServiceItem]] = None
 
+    other_services: Optional[dict[str, ServiceItem]] = None
+
     assessment_type: Optional[str] = None
     cfs_name: Optional[str] = None
 
@@ -93,6 +95,8 @@ class ImportWorkflowUpdate(BaseModel):
 
     other_gov_agency: Optional[YesNoType] = None
     other_gov_agency_type: Optional[dict[str, ServiceItem]] = None
+
+    other_services: Optional[dict[str, ServiceItem]] = None
 
     assessment_type: Optional[str] = None
     cfs_name: Optional[str] = None

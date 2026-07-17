@@ -128,6 +128,35 @@ class ImportWorkflowValidator:
                             f"{service_name}: Unit must be Container or BL."
                         )
 
+        # ---------------- Other Govt Agency ----------------
+        # existing code...
+
+        # ---------------- Other Services ----------------
+        services = data.get("other_services") or {}
+
+        for service_name, service in services.items():
+
+            status = service.get("status")
+
+            if not status:
+                raise ValueError(f"{service_name}: Status is required.")
+
+            if status == "Done":
+
+                tariff = service.get("tariff")
+                unit = (service.get("unit") or "").strip()
+
+                if tariff in (None, ""):
+                    raise ValueError(f"{service_name}: Tariff is required.")
+
+                if not unit:
+                    raise ValueError(f"{service_name}: Unit is required.")
+
+                if unit not in ("Container", "BL"):
+                    raise ValueError(
+                        f"{service_name}: Unit must be Container or BL."
+                    )
+
         # ---------------- Assessment ----------------
 
         if data.get("assessment_type") == "APR":
@@ -156,3 +185,4 @@ class ImportWorkflowValidator:
                 raise ValueError("Select Transporter.")
 
         return True
+

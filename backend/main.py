@@ -12,7 +12,8 @@ from backend.database.seeder import seed_masters
 from backend.routes.dropdown import router as dropdown_router
 from backend.routes.master import router as master_router
 from fastapi.middleware.cors import CORSMiddleware
-
+from backend.routes.vendor import router as vendor_router
+from backend.routes.type_of_service import router as type_of_service_router
 from backend.repositories.import_workflow_repository import (
     import_workflow_repository,
 )
@@ -35,6 +36,12 @@ from backend.routes.import_workflow import router as import_workflow_router
 from backend.routes.import_workflow_history import (
     router as import_workflow_history_router,
 )
+from backend.repositories.vendor_repository import (
+    vendor_repository,
+)
+from backend.repositories.type_of_service_repository import (
+    type_of_service_repository,
+)
 from backend.routes.cfs import router as cfs_router
 from backend.routes.transporter import router as transporter_router
 from backend.routes.other_gov_agency_type import (
@@ -55,7 +62,10 @@ async def lifespan(app: FastAPI):
     counter_repository.initialize("customer")
     counter_repository.initialize("company")
     counter_repository.initialize("import_job")
+    counter_repository.initialize("vendor")
 
+    type_of_service_repository.create_indexes()
+    vendor_repository.create_indexes()
     import_job_repository.create_indexes()
     import_workflow_repository.create_indexes()
     import_workflow_history_repository.create_indexes()
@@ -64,6 +74,7 @@ async def lifespan(app: FastAPI):
     transporter_repository.create_indexes()
     other_gov_agency_type_repository.create_indexes()
     line_name_repository.create_indexes()
+    vendor_repository.create_indexes()
     seed_masters()
 
     yield
@@ -87,7 +98,10 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(customer_router)
+app.include_router(vendor_router)
 app.include_router(company_router)
+
+app.include_router(type_of_service_router)
 
 app.include_router(import_job_router)
 app.include_router(import_workflow_router)
