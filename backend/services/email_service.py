@@ -67,6 +67,65 @@ class EmailService:
             server.send_message(message)
 
     @staticmethod
+    def send_vendor_created_email(vendor: dict):
+        message = MIMEMultipart("alternative")
+
+        message["Subject"] = "Vendor Profile Created - Octopus SCM"
+        message["From"] = settings.SMTP_FROM
+        message["To"] = vendor["email"]
+
+        html = f"""
+        <html>
+            <body style="font-family:Arial,sans-serif;">
+
+                <h2>Welcome to Octopus SCM</h2>
+
+                <p>Dear <b>{vendor["vendor_name"]}</b>,</p>
+
+                <p>Your vendor profile has been successfully created.</p>
+
+                <table cellpadding="6">
+                    <tr><td><b>Vendor Code</b></td><td>{vendor["vendor_code"]}</td></tr>
+                    <tr><td><b>Vendor Name</b></td><td>{vendor["vendor_name"]}</td></tr>
+                    <tr><td><b>Type of Service</b></td><td>{vendor["type_of_service"]}</td></tr>
+                    <tr><td><b>Email</b></td><td>{vendor["email"]}</td></tr>
+                    <tr><td><b>Phone</b></td><td>{vendor["phone"]}</td></tr>
+                    <tr><td><b>GSTIN</b></td><td>{vendor["gstin"]}</td></tr>
+                    <tr><td><b>PAN</b></td><td>{vendor["pan"]}</td></tr>
+                </table>
+
+                <br>
+
+                <p>Thank you for being associated with Octopus SCM.</p>
+
+                <p>
+                    Regards,<br>
+                    Octopus SCM Team
+                </p>
+
+            </body>
+        </html>
+        """
+
+        message.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP(
+                settings.SMTP_HOST,
+                int(settings.SMTP_PORT),
+                timeout=30,
+        ) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+
+            server.login(
+                settings.SMTP_USERNAME,
+                settings.SMTP_PASSWORD,
+            )
+
+            server.send_message(message)
+
+    @staticmethod
     def send_import_job_created_email(email: str, job: dict):
 
         message = MIMEMultipart("alternative")

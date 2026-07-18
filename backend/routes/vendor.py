@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from backend.models.vendor import VendorCreate, VendorUpdate
 from backend.services.vendor_service import vendor_service
 
@@ -33,9 +33,15 @@ def get_vendor(vendor_id: str):
 
 
 @router.post("")
-def create_vendor(vendor: VendorCreate):
+def create_vendor(
+    vendor: VendorCreate,
+    background_tasks: BackgroundTasks,
+):
     try:
-        return vendor_service.create(vendor)
+        return vendor_service.create(
+            vendor,
+            background_tasks,
+        )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 

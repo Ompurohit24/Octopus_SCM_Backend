@@ -11,6 +11,24 @@ class VendorRepository(BaseRepository):
     def __init__(self):
         super().__init__(vendors)
 
+    def get_next_code(self):
+        last_vendor = self.collection.find_one(
+            {"vendor_code": {"$regex": r"^VEN-\d+$"}},
+            sort=[("vendor_code", -1)],
+        )
+
+        if not last_vendor:
+            return "VEN-0001"
+
+        last_code = last_vendor.get("vendor_code", "VEN-0000")
+
+        try:
+            last_number = int(last_code.split("-")[1])
+        except (IndexError, ValueError):
+            last_number = 0
+
+        return f"VEN-{last_number + 1:04d}"
+
     def create_indexes(self):
 
         self.collection.create_index(

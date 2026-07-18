@@ -12,15 +12,25 @@ class BaseRepository:
     # def create(self, document):
     #     return self.collection.insert_one(document)
     def create(self, document, session=None):
-        return self.collection.insert_one(
+        document["created_at"] = datetime.utcnow()
+        document["updated_at"] = datetime.utcnow()
+        document["is_active"] = True
+        document["is_deleted"] = False
+
+        result = self.collection.insert_one(
             document,
             session=session,
         )
 
+        return self.find_by_id(result.inserted_id)
+
     def find_by_id(self, document_id):
+        if not isinstance(document_id, ObjectId):
+            document_id = ObjectId(document_id)
+
         return self.collection.find_one({
-            "_id": ObjectId(document_id),
-            "is_deleted": False
+            "_id": document_id,
+            "is_deleted": False,
         })
 
     def list(

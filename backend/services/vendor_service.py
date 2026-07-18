@@ -2,7 +2,9 @@ from fastapi import HTTPException, status
 
 from backend.models.vendor import VendorCreate, VendorUpdate
 from backend.repositories.vendor_repository import vendor_repository
+from fastapi import BackgroundTasks
 
+from backend.services.email_service import email_service
 
 class VendorService:
 
@@ -30,7 +32,11 @@ class VendorService:
 
         return vendor
 
-    def create(self, vendor: VendorCreate):
+    def create(
+            self,
+            vendor: VendorCreate,
+            background_tasks: BackgroundTasks,
+    ):
         duplicate = vendor_repository.find_duplicate(
             vendor_name=vendor.vendor_name,
             gstin=vendor.gstin,
@@ -49,7 +55,16 @@ class VendorService:
             }
             raise ValueError(messages[duplicate])
 
-        return vendor_repository.create(vendor.model_dump())
+        created_vendor = vendor_repository.create(
+            vendor.model_dump()
+        )
+
+        background_tasks.add_task(
+            email_service.send_vendor_created_email,
+            created_vendor,
+        )
+
+        return created_vendor
 
     def update(self, vendor_id: str, vendor: VendorUpdate):
         existing = vendor_repository.get(vendor_id)
