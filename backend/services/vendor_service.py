@@ -1,25 +1,29 @@
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 
 from backend.models.vendor import VendorCreate, VendorUpdate
 from backend.repositories.vendor_repository import vendor_repository
-from fastapi import BackgroundTasks
-
+from backend.repositories.counter_repository import counter_repository
 from backend.services.email_service import email_service
+from backend.utils.serializer import serialize, serialize_list
+
 
 class VendorService:
 
     def get_next_code(self):
+        counter = counter_repository.current("vendor")
+
         return {
-            "vendor_code": vendor_repository.get_next_code()
+            "vendor_code": f"VEN-{counter + 1:04d}"
         }
 
     def list(self, search: str, skip: int, limit: int):
-        return vendor_repository.search(
+        vendors = vendor_repository.search(
             search=search,
             skip=skip,
             limit=limit,
         )
 
+        return serialize_list(vendors)
 
     def get(self, vendor_id: str):
         vendor = vendor_repository.get(vendor_id)
@@ -30,12 +34,12 @@ class VendorService:
                 detail="Vendor not found.",
             )
 
-        return vendor
+        return serialize(vendor)
 
     def create(
-            self,
-            vendor: VendorCreate,
-            background_tasks: BackgroundTasks,
+        self,
+        vendor: VendorCreate,
+        background_tasks: BackgroundTasks,
     ):
         duplicate = vendor_repository.find_duplicate(
             vendor_name=vendor.vendor_name,
@@ -53,20 +57,31 @@ class VendorService:
                 "email": "Email already exists.",
                 "phone": "Mobile Number already exists.",
             }
+
             raise ValueError(messages[duplicate])
 
-        created_vendor = vendor_repository.create(
-            vendor.model_dump()
-        )
+        number = counter_repository.next("vendor")
+        vendor_code = f"VEN-{number:04d}"
+
+        document = vendor.model_dump()
+
+        # Never trust the frontend-generated code during creation.
+        document["vendor_code"] = vendor_code
+
+        created_vendor = vendor_repository.create(document)
 
         background_tasks.add_task(
             email_service.send_vendor_created_email,
             created_vendor,
         )
 
-        return created_vendor
+        return serialize(created_vendor)
 
-    def update(self, vendor_id: str, vendor: VendorUpdate):
+    def update(
+        self,
+        vendor_id: str,
+        vendor: VendorUpdate,
+    ):
         existing = vendor_repository.get(vendor_id)
 
         if not existing:
@@ -97,12 +112,17 @@ class VendorService:
                 "email": "Email already exists.",
                 "phone": "Mobile Number already exists.",
             }
+
             raise ValueError(messages[duplicate])
 
-        return vendor_repository.update(
+        vendor_repository.update(
             vendor_id,
             vendor.model_dump(exclude_unset=True),
         )
+
+        updated_vendor = vendor_repository.get(vendor_id)
+
+        return serialize(updated_vendor)
 
     def delete(self, vendor_id: str):
         if not vendor_repository.get(vendor_id):
