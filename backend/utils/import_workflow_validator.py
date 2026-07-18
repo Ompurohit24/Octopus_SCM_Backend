@@ -99,6 +99,8 @@ class ImportWorkflowValidator:
 
         # ---------------- Other Govt Agency ----------------
 
+        # ---------------- Other Govt Agency ----------------
+
         if data.get("other_gov_agency") == "Yes":
             services = data.get("other_gov_agency_type") or {}
 
@@ -110,28 +112,67 @@ class ImportWorkflowValidator:
                 status = service.get("status")
 
                 if not status:
-                    raise ValueError(f"{service_name}: Status is required.")
+                    raise ValueError(
+                        f"{service_name}: Status is required."
+                    )
 
                 if status == "Done":
 
-                    tariff = service.get("tariff")
                     unit = (service.get("unit") or "").strip()
 
-                    if tariff in (None, ""):
-                        raise ValueError(f"{service_name}: Tariff is required.")
-
+                    # Tariff Unit required first
                     if not unit:
-                        raise ValueError(f"{service_name}: Unit is required.")
+                        raise ValueError(
+                            f"{service_name}: Tariff Unit is required."
+                        )
 
                     if unit not in ("Container", "BL"):
                         raise ValueError(
-                            f"{service_name}: Unit must be Container or BL."
+                            f"{service_name}: Tariff Unit must be Container or BL."
                         )
 
+                    # BL -> single Tariff Amount required
+                    if unit == "BL":
+
+                        tariff = service.get("tariff")
+
+                        if tariff in (None, ""):
+                            raise ValueError(
+                                f"{service_name}: Tariff Amount is required."
+                            )
+
+                    # Container -> 20 and/or 40
+                    elif unit == "Container":
+
+                        enable20 = service.get("enable20", False)
+                        enable40 = service.get("enable40", False)
+
+                        tariff20 = service.get("tariff20")
+                        tariff40 = service.get("tariff40")
+
+                        # At least one container size must be selected
+                        if not enable20 and not enable40:
+                            raise ValueError(
+                                f"{service_name}: Select Container Size 20 or 40."
+                            )
+
+                        # 20 selected -> 20 amount required
+                        if enable20 and tariff20 in (None, ""):
+                            raise ValueError(
+                                f"{service_name}: 20 Tariff Amount is required."
+                            )
+
+                        # 40 selected -> 40 amount required
+                        if enable40 and tariff40 in (None, ""):
+                            raise ValueError(
+                                f"{service_name}: 40 Tariff Amount is required."
+                            )
         # ---------------- Other Govt Agency ----------------
         # existing code...
 
         # ---------------- Other Services ----------------
+        # ---------------- Other Services ----------------
+
         services = data.get("other_services") or {}
 
         for service_name, service in services.items():
@@ -139,23 +180,52 @@ class ImportWorkflowValidator:
             status = service.get("status")
 
             if not status:
-                raise ValueError(f"{service_name}: Status is required.")
+                raise ValueError(
+                    f"{service_name}: Status is required."
+                )
 
             if status == "Done":
 
-                tariff = service.get("tariff")
                 unit = (service.get("unit") or "").strip()
 
-                if tariff in (None, ""):
-                    raise ValueError(f"{service_name}: Tariff is required.")
-
                 if not unit:
-                    raise ValueError(f"{service_name}: Unit is required.")
+                    raise ValueError(
+                        f"{service_name}: Tariff Unit is required."
+                    )
 
                 if unit not in ("Container", "BL"):
                     raise ValueError(
-                        f"{service_name}: Unit must be Container or BL."
+                        f"{service_name}: Tariff Unit must be Container or BL."
                     )
+
+                # Container validation
+                if unit == "Container":
+
+                    enable20 = service.get("enable20", False)
+                    enable40 = service.get("enable40", False)
+
+                    if not enable20 and not enable40:
+                        raise ValueError(
+                            f"{service_name}: Select at least one Container Size."
+                        )
+
+                    if enable20 and service.get("tariff20") in (None, ""):
+                        raise ValueError(
+                            f"{service_name}: 20 Tariff Amount is required."
+                        )
+
+                    if enable40 and service.get("tariff40") in (None, ""):
+                        raise ValueError(
+                            f"{service_name}: 40 Tariff Amount is required."
+                        )
+
+                # BL validation
+                elif unit == "BL":
+
+                    if service.get("tariff") in (None, ""):
+                        raise ValueError(
+                            f"{service_name}: Tariff Amount is required."
+                        )
 
         # ---------------- Assessment ----------------
 

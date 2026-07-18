@@ -23,7 +23,16 @@ class VendorService:
             limit=limit,
         )
 
-        return serialize_list(vendors)
+        return {
+            "total": vendor_repository.count(
+                {
+                    "is_deleted": False
+                }
+            ),
+            "skip": skip,
+            "limit": limit,
+            "items": serialize_list(vendors),
+        }
 
     def get(self, vendor_id: str):
         vendor = vendor_repository.get(vendor_id)
