@@ -51,8 +51,9 @@ def start_scheduler():
     scheduler.start()
 
     print(
-        "[Scheduler] Pending Jobs email scheduled "
-        "daily at 11:00 PM IST."
+        "[Scheduler] Daily Pending Jobs email "
+        "scheduled for 11:00 PM IST.",
+        flush=True,
     )
 
 
