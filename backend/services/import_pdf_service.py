@@ -45,10 +45,10 @@ class ImportPDFService:
         pages: list[str] = []
 
         for page in reader.pages:
-            text = page.extract_text() or ""
+            page_text = page.extract_text() or ""
 
-            if text:
-                pages.append(text)
+            if page_text:
+                pages.append(page_text)
 
         return "\n".join(pages)
 
@@ -68,157 +68,96 @@ class ImportPDFService:
 
         # ---------------------------------------------------------
         # BL NO + BL DATE
+        #
+        # Actual PDF text:
+        # BL No. ONEYIZMG03997500 dt. 06-Jun-2026
         # ---------------------------------------------------------
 
-        # First try the combined checklist format:
-        #
-        # B/L No. & Date
-        # ONEYIZMG03997500
-        # 06-Jun-2026
-
-        bl_combined_match = re.search(
-            r"B/?L\s*No\.?\s*&\s*Date"
-            r".{0,300}?"
-            r"\b([A-Z]{3,}[A-Z0-9\-\/]*\d[A-Z0-9\-\/]*)\b"
-            r"\s+"
-            r"(\d{1,2}[-/.][A-Za-z]{3,9}[-/.]\d{4}|"
-            r"\d{1,2}[-/.]\d{1,2}[-/.]\d{4})",
+        bl_match = re.search(
+            r"\bBL\s*No\.?\s*"
+            r"([A-Z0-9/-]+)"
+            r"\s+(?:dt\.?|Date)\s*"
+            r"(\d{1,2}-[A-Za-z]{3,9}-\d{4})",
             text,
-            re.IGNORECASE | re.DOTALL,
+            re.IGNORECASE,
         )
 
-        if bl_combined_match:
+        if bl_match:
             data["blNo"] = self._clean(
-                bl_combined_match.group(1)
+                bl_match.group(1)
             )
 
             data["blDate"] = self._date_to_iso(
-                bl_combined_match.group(2)
+                bl_match.group(2)
             )
 
         else:
-            # Fallback BL number
-            bl_match = re.search(
-                r"(?:MASTER\s*)?B/?L\s*"
-                r"(?:NO\.?|NUMBER)"
-                r"\s*[:\-]?\s*"
-                r"([A-Z0-9\-\/]+)",
+            # Page 3 fallback:
+            #
+            # BL No. ONEYIZMG03997500
+            # Date 06-Jun-2026
+
+            shipment_bl_match = re.search(
+                r"\bBL\s*No\.?\s*"
+                r"([A-Z0-9/-]+)"
+                r".{0,150}?"
+                r"\bDate\s+"
+                r"(\d{1,2}-[A-Za-z]{3,9}-\d{4})",
                 text,
-                re.IGNORECASE,
+                re.IGNORECASE | re.DOTALL,
             )
 
-            if bl_match:
-                bl_no = self._clean(
-                    bl_match.group(1)
+            if shipment_bl_match:
+                data["blNo"] = self._clean(
+                    shipment_bl_match.group(1)
                 )
 
-                # Avoid matching heading words.
-                if bl_no.upper() not in {
-                    "VALUE",
-                    "DATE",
-                    "NO",
-                    "NUMBER",
-                }:
-                    data["blNo"] = bl_no
-
-            # Fallback BL date
-            bl_date_match = re.search(
-                r"B/?L\s*DATE"
-                r"\s*[:\-]?\s*"
-                r"(\d{1,2}[-/.][A-Za-z]{3,9}[-/.]\d{4}|"
-                r"\d{1,2}[-/.]\d{1,2}[-/.]\d{4})",
-                text,
-                re.IGNORECASE,
-            )
-
-            if bl_date_match:
                 data["blDate"] = self._date_to_iso(
-                    bl_date_match.group(1)
+                    shipment_bl_match.group(2)
                 )
 
         # ---------------------------------------------------------
         # INVOICE NO + INVOICE DATE
+        #
+        # Actual PDF text:
+        #
+        # Invoice 1 / 1
+        # 2026-1414 dt. 06-Jun-2026
         # ---------------------------------------------------------
 
-        # Checklist format:
-        #
-        # Invoice No. & Date
-        # 2026-1414
-        # 06-Jun-2026
-
-        invoice_combined_match = re.search(
-            r"Invoice\s*No\.?\s*&\s*Date"
-            r".{0,300}?"
-            r"\b([A-Z0-9]+(?:[-/][A-Z0-9]+)+)\b"
+        invoice_match = re.search(
+            r"Invoice\s+\d+\s*/\s*\d+"
             r"\s+"
-            r"(\d{1,2}[-/.][A-Za-z]{3,9}[-/.]\d{4}|"
-            r"\d{1,2}[-/.]\d{1,2}[-/.]\d{4})",
+            r"([A-Z0-9/-]+)"
+            r"\s+dt\.?\s*"
+            r"(\d{1,2}-[A-Za-z]{3,9}-\d{4})",
             text,
-            re.IGNORECASE | re.DOTALL,
+            re.IGNORECASE,
         )
 
-        if invoice_combined_match:
+        if invoice_match:
             data["invoiceNo"] = self._clean(
-                invoice_combined_match.group(1)
+                invoice_match.group(1)
             )
 
             data["invoiceDate"] = self._date_to_iso(
-                invoice_combined_match.group(2)
+                invoice_match.group(2)
             )
-
-        else:
-            # Fallback invoice number
-            invoice_match = re.search(
-                r"INVOICE\s*"
-                r"(?:NO\.?|NUMBER)"
-                r"\s*[:\-]?\s*"
-                r"([A-Z0-9]+(?:[-/][A-Z0-9]+)+)",
-                text,
-                re.IGNORECASE,
-            )
-
-            if invoice_match:
-                invoice_no = self._clean(
-                    invoice_match.group(1)
-                )
-
-                if invoice_no.upper() not in {
-                    "VALUE",
-                    "DATE",
-                    "NO",
-                    "NUMBER",
-                }:
-                    data["invoiceNo"] = invoice_no
-
-            # Fallback invoice date
-            invoice_date_match = re.search(
-                r"INVOICE\s*DATE"
-                r"\s*[:\-]?\s*"
-                r"(\d{1,2}[-/.][A-Za-z]{3,9}[-/.]\d{4}|"
-                r"\d{1,2}[-/.]\d{1,2}[-/.]\d{4})",
-                text,
-                re.IGNORECASE,
-            )
-
-            if invoice_date_match:
-                data["invoiceDate"] = self._date_to_iso(
-                    invoice_date_match.group(1)
-                )
 
         # ---------------------------------------------------------
         # CONSIGNEE / IMPORTER
+        #
+        # Actual PDF text:
+        #
+        # Importer Detail 0597039747
+        # M/S. VOESTALPINE VAE VKN INDIA PRIVATE LIMITED
         # ---------------------------------------------------------
 
-        # Checklist format:
-        #
-        # Importer Name & Address
-        # VOESTALPINE VAE VKN INDIA PRIVATE LIMITED
-        # Plot No....
-
         consignee_match = re.search(
-            r"Importer\s*Name\s*&\s*Address"
-            r"\s*[:\-]?\s*"
-            r"([^\n\r]+)",
+            r"Importer\s+Detail[^\r\n]*"
+            r"[\r\n]+"
+            r"(?:M/S\.?\s*)?"
+            r"([^\r\n]+)",
             text,
             re.IGNORECASE,
         )
@@ -228,111 +167,63 @@ class ImportPDFService:
                 consignee_match.group(1)
             )
 
-            if consignee.upper() not in {
-                "VALUE",
-                "DETAILS",
-                "PARTICULARS",
-                "IMPORTER NAME & ADDRESS",
-            }:
+            if consignee:
                 data["consigneeName"] = consignee
-
-        # Generic fallback
-        if not data.get("consigneeName"):
-            consignee_patterns = (
-                r"IMPORTER\s*NAME\s*[:\-]?\s*([^\n\r]+)",
-                r"CONSIGNEE\s*(?:NAME)?"
-                r"\s*[:\-]?\s*([^\n\r]+)",
-            )
-
-            for pattern in consignee_patterns:
-                match = re.search(
-                    pattern,
-                    text,
-                    re.IGNORECASE,
-                )
-
-                if not match:
-                    continue
-
-                value = self._clean(
-                    match.group(1)
-                )
-
-                if (
-                    value
-                    and value.upper()
-                    not in {
-                        "VALUE",
-                        "DETAILS",
-                        "PARTICULARS",
-                    }
-                ):
-                    data["consigneeName"] = value
-                    break
 
         # ---------------------------------------------------------
         # PORT OF LOADING
+        #
+        # Actual:
+        # Port Of Loading Aliaga(TRALI)
         # ---------------------------------------------------------
 
-        pol_match = re.search(
-            r"(?:PORT\s*OF\s*LOADING|LOAD\s*PORT)"
-            r"\s*[:\-]?\s*"
-            r"([^\n\r]+)",
+        port_match = re.search(
+            r"Port\s+Of\s+Loading\s+"
+            r"([^\r\n]+)",
             text,
             re.IGNORECASE,
         )
 
-        if pol_match:
-            value = self._clean(
-                pol_match.group(1)
+        if port_match:
+            data["portOfLoading"] = self._clean(
+                port_match.group(1)
             )
-
-            if value.upper() not in {
-                "VALUE",
-                "DETAILS",
-            }:
-                data["portOfLoading"] = value
 
         # ---------------------------------------------------------
         # COUNTRY OF ORIGIN
+        #
+        # Actual:
+        # Cntry Of Origin TURKEY
         # ---------------------------------------------------------
 
         country_match = re.search(
-            r"(?:COUNTRY\s*OF\s*ORIGIN|ORIGIN\s*COUNTRY)"
-            r"\s*[:\-]?\s*"
-            r"([^\n\r]+)",
+            r"Cntry\s+Of\s+Origin\s+"
+            r"([^\r\n]+)",
             text,
             re.IGNORECASE,
         )
 
         if country_match:
-            value = self._clean(
+            data["countryOfOrigin"] = self._clean(
                 country_match.group(1)
             )
 
-            if value.upper() not in {
-                "VALUE",
-                "DETAILS",
-            }:
-                data["country"] = value
-
         # ---------------------------------------------------------
         # CONTAINERS
+        #
+        # Actual:
+        #
+        # 1 DFSU1259598 TRAF28738 20' FCL
+        # 2 TCLU3417974 TRAF28740 20' FCL
         # ---------------------------------------------------------
 
-        # ISO container number:
-        # 4 letters + 7 digits
-        #
-        # Example:
-        # DFSU1259598 20 FCL
-
         container_matches = re.findall(
-            r"\b([A-Z]{4}\d{7})\b"
-            r".{0,40}?"
-            r"\b(20|40)\b"
-            r"(?:\s*(?:FT|HC|FCL|GP))?",
+            r"^\s*\d+\s+"
+            r"([A-Z]{4}\d{7})"
+            r"\s+\S+\s+"
+            r"(20|40)'?\s*FCL",
             text,
-            re.IGNORECASE | re.DOTALL,
+            re.IGNORECASE | re.MULTILINE,
         )
 
         containers: list[dict[str, str]] = []
@@ -355,7 +246,10 @@ class ImportPDFService:
 
         if containers:
             data["containers"] = containers
-            data["noOfCntr"] = len(containers)
+
+            data["noOfCntr"] = len(
+                containers
+            )
 
             sizes = {
                 container["size"]
@@ -369,41 +263,26 @@ class ImportPDFService:
 
         # ---------------------------------------------------------
         # CARGO DESCRIPTION
+        #
+        # Actual item line:
+        # 1 25171090 OLIVINE SAND AFS 40-45
         # ---------------------------------------------------------
 
-        cargo_patterns = (
-            r"DESCRIPTION\s*OF\s*GOODS"
-            r"\s*[:\-]?\s*([^\n\r]+)",
-
-            r"CARGO\s*DESCRIPTION"
-            r"\s*[:\-]?\s*([^\n\r]+)",
+        cargo_match = re.search(
+            r"^\s*\d+\s+"
+            r"\d{8}\s+"
+            r"([^\r\n]+)",
+            text,
+            re.MULTILINE,
         )
 
-        for pattern in cargo_patterns:
-            cargo_match = re.search(
-                pattern,
-                text,
-                re.IGNORECASE,
-            )
-
-            if not cargo_match:
-                continue
-
-            value = self._clean(
+        if cargo_match:
+            cargo = self._clean(
                 cargo_match.group(1)
             )
 
-            if (
-                value
-                and value.upper()
-                not in {
-                    "VALUE",
-                    "DETAILS",
-                    "PARTICULARS",
-                }
-            ):
-                data["cargoDescription"] = value
-                break
+            if cargo:
+                data["cargoDescription"] = cargo
 
         return data
 
