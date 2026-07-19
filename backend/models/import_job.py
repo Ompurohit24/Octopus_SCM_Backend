@@ -14,6 +14,9 @@ class ImportJobBase(BaseModel):
     no_of_cntr: int
     size: int
 
+    # Multiple container numbers for this import job
+    container_numbers: list[str] = Field(default_factory=list)
+
     line_name: str
     forwarder: str
 

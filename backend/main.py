@@ -28,6 +28,15 @@ from backend.repositories.other_gov_agency_type_repository import (
     other_gov_agency_type_repository,
 )
 
+from backend.scheduler import (
+    start_scheduler,
+    stop_scheduler,
+)
+
+from backend.services.pending_job_email_service import (
+    pending_job_email_service,
+)
+from backend.routes.operation import router as operation_router
 from backend.routes.auth import router as auth_router
 from backend.routes.company import router as company_router
 from backend.routes.customer import router as customer_router
@@ -100,7 +109,7 @@ app.include_router(auth_router)
 app.include_router(customer_router)
 app.include_router(vendor_router)
 app.include_router(company_router)
-
+app.include_router(operation_router)
 app.include_router(type_of_service_router)
 
 app.include_router(import_job_router)
@@ -124,3 +133,16 @@ def root():
 @app.get("/me")
 def me(user=Depends(get_current_user)):
     return user
+
+@app.on_event("startup")
+def startup_event():
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    stop_scheduler()
+
+@app.post("/test-pending-jobs-email")
+def test_pending_jobs_email():
+    return pending_job_email_service.send_daily_pending_report()

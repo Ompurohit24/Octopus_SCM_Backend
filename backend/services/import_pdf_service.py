@@ -171,6 +171,44 @@ class ImportPDFService:
                 data["consigneeName"] = consignee
 
         # ---------------------------------------------------------
+        # CONSIGNEE / IMPORTER ADDRESS
+        #
+        # Actual PDF:
+        #
+        # M/S. VOESTALPINE VAE VKN INDIA PRIVATE LIMITED
+        # Branch SNo: 2 PAN: AAACV3943J
+        # 42, MILE STONE,VILLAGE JOSHI
+        # CHAUHAN SONEPAT
+        # Sonepat - 131021,
+        # Haryana,
+        # IGM No
+        # ---------------------------------------------------------
+
+        address_match = re.search(
+            r"Importer\s+Detail[^\r\n]*"
+            r"[\r\n]+"
+            r"(?:M/S\.?\s*)?[^\r\n]+"
+            r"[\r\n]+"
+            r"(?:Branch[^\r\n]*[\r\n]+)?"
+            r"(.+?)"
+            r"(?=[\r\n]+IGM\s+No\b)",
+            text,
+            re.IGNORECASE | re.DOTALL,
+        )
+
+        if address_match:
+            address_lines = [
+                line.strip(" ,")
+                for line in address_match.group(1).splitlines()
+                if line.strip(" ,")
+            ]
+
+            if address_lines:
+                data["consigneeAddress"] = ", ".join(
+                    address_lines
+                )
+
+        # ---------------------------------------------------------
         # PORT OF LOADING
         #
         # Actual:
@@ -215,6 +253,20 @@ class ImportPDFService:
         #
         # 1 DFSU1259598 TRAF28738 20' FCL
         # 2 TCLU3417974 TRAF28740 20' FCL
+        #
+        # Returns:
+        #
+        # containers: [
+        #     {
+        #         "containerNo": "DFSU1259598",
+        #         "size": "20",
+        #     }
+        # ]
+        #
+        # containerNumbers: [
+        #     "DFSU1259598",
+        #     "TCLU3417974",
+        # ]
         # ---------------------------------------------------------
 
         container_matches = re.findall(
@@ -227,6 +279,7 @@ class ImportPDFService:
         )
 
         containers: list[dict[str, str]] = []
+        container_numbers: list[str] = []
         seen: set[str] = set()
 
         for number, size in container_matches:
@@ -244,12 +297,17 @@ class ImportPDFService:
                 }
             )
 
+            container_numbers.append(number)
+
         if containers:
+            # Keep detailed container information for
+            # PDF auto-fill and size detection.
             data["containers"] = containers
 
-            data["noOfCntr"] = len(
-                containers
-            )
+            # Direct field used by Import Job.
+            data["containerNumbers"] = container_numbers
+
+            data["noOfCntr"] = len(containers)
 
             sizes = {
                 container["size"]
@@ -257,9 +315,7 @@ class ImportPDFService:
             }
 
             if len(sizes) == 1:
-                data["size"] = next(
-                    iter(sizes)
-                )
+                data["size"] = next(iter(sizes))
 
         # ---------------------------------------------------------
         # CARGO DESCRIPTION
