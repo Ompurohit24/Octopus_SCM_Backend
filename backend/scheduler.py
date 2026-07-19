@@ -38,7 +38,7 @@ def start_scheduler():
         send_pending_jobs_report,
         trigger=CronTrigger(
             hour=23,
-            minute=0,
+            minute=5,
             timezone="Asia/Kolkata",
         ),
         id="daily_pending_jobs_email",
@@ -52,7 +52,7 @@ def start_scheduler():
 
     print(
         "[Scheduler] Daily Pending Jobs email "
-        "scheduled for 11:00 PM IST.",
+        "scheduled for 11:05 PM IST.",
         flush=True,
     )
 
