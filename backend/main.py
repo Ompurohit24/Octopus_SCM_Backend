@@ -65,8 +65,9 @@ from backend.utils.dependencies import get_current_user
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    # customer_repository.create_indexes()
-    # company_repository.create_indexes()
+    # ---------------------------------------------------------
+    # DATABASE INITIALIZATION
+    # ---------------------------------------------------------
 
     counter_repository.initialize("customer")
     counter_repository.initialize("company")
@@ -83,10 +84,35 @@ async def lifespan(app: FastAPI):
     transporter_repository.create_indexes()
     other_gov_agency_type_repository.create_indexes()
     line_name_repository.create_indexes()
-    vendor_repository.create_indexes()
+
     seed_masters()
 
-    yield
+    # ---------------------------------------------------------
+    # START BACKGROUND SCHEDULER
+    # ---------------------------------------------------------
+
+    print(
+        "[Startup] Starting scheduler...",
+        flush=True,
+    )
+
+    start_scheduler()
+
+    try:
+        yield
+
+    finally:
+
+        # -----------------------------------------------------
+        # STOP BACKGROUND SCHEDULER
+        # -----------------------------------------------------
+
+        print(
+            "[Shutdown] Stopping scheduler...",
+            flush=True,
+        )
+
+        stop_scheduler()
 
 
 app = FastAPI(
@@ -133,15 +159,6 @@ def root():
 @app.get("/me")
 def me(user=Depends(get_current_user)):
     return user
-
-@app.on_event("startup")
-def startup_event():
-    start_scheduler()
-
-
-@app.on_event("shutdown")
-def shutdown_event():
-    stop_scheduler()
 
 @app.post("/test-pending-jobs-email")
 def test_pending_jobs_email():
