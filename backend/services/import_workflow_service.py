@@ -223,6 +223,11 @@ class ImportWorkflowService:
             )
         }
 
+        # Clear previously selected Government Agency services
+        # when Other Gov Agency is changed to "No".
+        if data.get("other_gov_agency") == "No":
+            data["other_gov_agency_type"] = {}
+
         from backend.utils.import_workflow_validator import (
             ImportWorkflowValidator,
         )
