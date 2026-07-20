@@ -1565,5 +1565,383 @@ class EmailService:
                 message.as_string(),
             )
 
+    @staticmethod
+    def send_purchase_order_invoice_reminder_email(
+        vendor: dict,
+        purchase_order: dict,
+    ) -> bool:
+        """
+        Send a reminder to the assigned vendor requesting
+        submission of the invoice for an Issued PO.
+
+        Returns True only when the SMTP send succeeds.
+
+        This allows the reminder service to update:
+
+            last_invoice_reminder_at
+            invoice_reminder_count
+
+        only after successful delivery.
+        """
+
+        # -------------------------------------------------
+        # NORMALIZE VENDOR EMAILS
+        # -------------------------------------------------
+
+        raw_emails = vendor.get(
+            "email",
+            [],
+        )
+
+        if isinstance(
+            raw_emails,
+            str,
+        ):
+            emails = [
+                raw_emails
+            ]
+
+        elif isinstance(
+            raw_emails,
+            list,
+        ):
+            emails = raw_emails
+
+        else:
+            emails = []
+
+        recipients = []
+        seen = set()
+
+        for item in emails:
+
+            email = str(
+                item
+            ).strip()
+
+            if not email:
+                continue
+
+            normalized = (
+                email.lower()
+            )
+
+            if normalized in seen:
+                continue
+
+            seen.add(
+                normalized
+            )
+
+            recipients.append(
+                email
+            )
+
+        # No email address means no successful reminder.
+
+        if not recipients:
+            return False
+
+        # -------------------------------------------------
+        # SAFE DISPLAY VALUES
+        # -------------------------------------------------
+
+        po_number = escape(
+            str(
+                purchase_order.get(
+                    "po_number",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        job_number = escape(
+            str(
+                purchase_order.get(
+                    "job_number",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        bl_no = escape(
+            str(
+                purchase_order.get(
+                    "bl_no",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        be_no = escape(
+            str(
+                purchase_order.get(
+                    "be_no",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        consignee_name = escape(
+            str(
+                purchase_order.get(
+                    "consignee_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        category = escape(
+            str(
+                purchase_order.get(
+                    "category",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        service_name = escape(
+            str(
+                purchase_order.get(
+                    "service_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        vendor_name = escape(
+            str(
+                vendor.get(
+                    "vendor_name",
+                    purchase_order.get(
+                        "vendor_name",
+                        "",
+                    ),
+                )
+                or ""
+            )
+        )
+
+        vendor_code = escape(
+            str(
+                vendor.get(
+                    "vendor_code",
+                    purchase_order.get(
+                        "vendor_code",
+                        "",
+                    ),
+                )
+                or ""
+            )
+        )
+
+        # -------------------------------------------------
+        # EMAIL
+        # -------------------------------------------------
+
+        message = MIMEMultipart(
+            "alternative"
+        )
+
+        message["Subject"] = (
+            f"Invoice Required - "
+            f"{po_number} - "
+            f"{job_number}"
+        )
+
+        message["From"] = (
+            settings.SMTP_FROM
+        )
+
+        message["To"] = ", ".join(
+            recipients
+        )
+
+        html = f"""
+        <html>
+            <body
+                style="
+                    font-family:Arial,sans-serif;
+                    color:#222;
+                "
+            >
+
+                <h2>
+                    Invoice Submission Reminder
+                </h2>
+
+                <p>
+                    Dear <b>{vendor_name}</b>,
+                </p>
+
+                <p>
+                    This is a reminder to submit your invoice
+                    against Purchase Order
+                    <b>{po_number}</b>.
+                </p>
+
+                <p>
+                    Our records indicate that the vendor invoice
+                    for the following Purchase Order has not yet
+                    been received.
+                </p>
+
+                <table
+                    cellpadding="6"
+                    cellspacing="0"
+                >
+
+                    <tr>
+                        <td>
+                            <b>PO Number</b>
+                        </td>
+
+                        <td>
+                            {po_number or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Job Number</b>
+                        </td>
+
+                        <td>
+                            {job_number or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>BL No</b>
+                        </td>
+
+                        <td>
+                            {bl_no or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>BE No</b>
+                        </td>
+
+                        <td>
+                            {be_no or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Consignee</b>
+                        </td>
+
+                        <td>
+                            {consignee_name or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Category</b>
+                        </td>
+
+                        <td>
+                            {category or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Service</b>
+                        </td>
+
+                        <td>
+                            <b>{service_name or "-"}</b>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Vendor Code</b>
+                        </td>
+
+                        <td>
+                            {vendor_code or "-"}
+                        </td>
+                    </tr>
+
+                </table>
+
+                <br>
+
+                <p>
+                    Kindly send the invoice at the earliest
+                    so that it can be recorded and processed
+                    in Octopus SCM.
+                </p>
+
+                <p>
+                    This reminder will automatically stop once
+                    the invoice is received and uploaded against
+                    this Purchase Order.
+                </p>
+
+                <p>
+                    Regards,<br>
+                    Octopus SCM Team
+                </p>
+
+            </body>
+        </html>
+        """
+
+        message.attach(
+            MIMEText(
+                html,
+                "html",
+            )
+        )
+
+        # -------------------------------------------------
+        # SMTP
+        # -------------------------------------------------
+
+        with smtplib.SMTP(
+            settings.SMTP_HOST,
+            int(
+                settings.SMTP_PORT
+            ),
+            timeout=30,
+        ) as server:
+
+            server.ehlo()
+
+            server.starttls()
+
+            server.ehlo()
+
+            server.login(
+                settings.SMTP_USERNAME,
+                settings.SMTP_PASSWORD,
+            )
+
+            server.sendmail(
+                settings.SMTP_FROM,
+                recipients,
+                message.as_string(),
+            )
+
+        return True
+
+
+
 
 email_service = EmailService()

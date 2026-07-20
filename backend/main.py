@@ -51,6 +51,10 @@ from backend.repositories.vendor_repository import (
 from backend.repositories.type_of_service_repository import (
     type_of_service_repository,
 )
+
+from backend.services.invoice_reminder_service import (
+    invoice_reminder_service,
+)
 from backend.routes.cfs import router as cfs_router
 from backend.routes.transporter import router as transporter_router
 from backend.routes.other_gov_agency_type import (
@@ -164,3 +168,10 @@ def me(user=Depends(get_current_user)):
 @app.post("/test-pending-jobs-email")
 def test_pending_jobs_email():
     return pending_job_email_service.send_daily_pending_report()
+
+@app.post("/test-invoice-reminders")
+def test_invoice_reminders():
+    return (
+        invoice_reminder_service
+        .send_daily_invoice_reminders()
+    )
