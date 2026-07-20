@@ -1,8 +1,10 @@
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    File,
     HTTPException,
     Query,
+    UploadFile,
 )
 
 from backend.models.purchase_order import (
@@ -47,10 +49,13 @@ def get_purchase_order_service_status(
     to uncheck/remove the service.
     """
 
-    return purchase_order_service.get_issued_for_service(
-        job_id=job_id,
-        category=category,
-        service_name=service_name,
+    return (
+        purchase_order_service
+        .get_issued_for_service(
+            job_id=job_id,
+            category=category,
+            service_name=service_name,
+        )
     )
 
 
@@ -89,19 +94,69 @@ def cancel_purchase_order_service(
     Status:
         Issued -> Cancelled
 
-    Cancellation information is retained for audit/history.
+    Cancellation information is retained
+    for audit/history.
     """
 
     try:
-        return purchase_order_service.cancel_issued_service_po(
-            job_id=job_id,
-            category=category,
-            service_name=service_name,
-            reason=(
-                cancellation.reason
-                or "Service removed from Import Workflow"
-            ),
-            background_tasks=background_tasks,
+        return (
+            purchase_order_service
+            .cancel_issued_service_po(
+                job_id=job_id,
+                category=category,
+                service_name=service_name,
+                reason=(
+                    cancellation.reason
+                    or
+                    "Service removed from Import Workflow"
+                ),
+                background_tasks=background_tasks,
+            )
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        )
+
+
+# =============================================
+# VENDOR INVOICE
+# =============================================
+
+@router.post("/{po_number}/invoice")
+def upload_purchase_order_invoice(
+    po_number: str,
+    invoice: UploadFile = File(...),
+):
+    """
+    Upload or replace the vendor invoice belonging
+    to an Issued Purchase Order.
+
+    Rules:
+
+        Issued + Pending
+            -> Upload allowed
+            -> invoice_status = Received
+
+        Issued + Received
+            -> Replace allowed
+            -> invoice_status remains Received
+
+        Cancelled
+            -> Upload rejected
+
+    Once invoice_status becomes Received,
+    the daily vendor invoice reminder stops.
+    """
+
+    try:
+        return (
+            purchase_order_service.upload_invoice(
+                po_number=po_number,
+                invoice=invoice,
+            )
         )
 
     except ValueError as e:

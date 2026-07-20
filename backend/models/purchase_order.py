@@ -10,6 +10,11 @@ PurchaseOrderStatus = Literal[
     "Cancelled",
 ]
 
+PurchaseOrderInvoiceStatus = Literal[
+    "Pending",
+    "Received",
+]
+
 
 class PurchaseOrderContainer(BaseModel):
     container_number: str
@@ -69,8 +74,9 @@ class PurchaseOrderUpdate(BaseModel):
 
 class PurchaseOrderCancel(BaseModel):
     """
-    Used when a service is removed/unselected from an Import Workflow
-    after a Purchase Order has already been issued.
+    Used when a service is removed/unselected from an
+    Import Workflow after a Purchase Order has already
+    been issued.
 
     Cancellation must preserve the PO for audit/history.
     """
@@ -119,6 +125,31 @@ class PurchaseOrderResponse(BaseModel):
     enable_40: bool = False
 
     status: PurchaseOrderStatus = "Issued"
+
+    # ---------------------------------------------
+    # INVOICE
+    #
+    # Pending:
+    #   PO issued but vendor invoice not received.
+    #
+    # Received:
+    #   Invoice uploaded into the system.
+    #   Daily reminder emails must stop.
+    # ---------------------------------------------
+
+    invoice_status: PurchaseOrderInvoiceStatus = (
+        "Pending"
+    )
+
+    invoice_file_path: Optional[str] = None
+    invoice_original_name: Optional[str] = None
+    invoice_content_type: Optional[str] = None
+
+    invoice_received_at: Optional[datetime] = None
+
+    # Reminder audit.
+    last_invoice_reminder_at: Optional[datetime] = None
+    invoice_reminder_count: int = 0
 
     # Cancellation audit information.
     cancellation_reason: Optional[str] = None

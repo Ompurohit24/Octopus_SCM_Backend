@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
+from pathlib import Path
+import shutil
+from uuid import uuid4
 
-from fastapi import BackgroundTasks
+from fastapi import (
+    BackgroundTasks,
+    UploadFile,
+)
 
 from backend.database.mongo import client
 from backend.repositories.counter_repository import (
@@ -20,9 +26,73 @@ from backend.services.purchase_order_pdf_service import (
 )
 
 
+
+INVOICE_ROOT = Path("Invoices")
+INVOICE_ROOT.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+
+ALLOWED_INVOICE_EXTENSIONS = {
+    ".pdf",
+    ".jpg",
+    ".jpeg",
+    ".png",
+}
+
+ALLOWED_INVOICE_CONTENT_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+}
+
+MAX_INVOICE_SIZE = (
+    10 * 1024 * 1024
+)
+
+
+
 class PurchaseOrderService:
 
     SEQUENCE = "purchase_order"
+
+
+
+    @staticmethod
+    def _safe_path_component(
+        value: str,
+    ) -> str:
+        """
+        Keep job/PO folder names safe.
+
+        Example:
+            IMP-00023
+            PO-00002
+        """
+
+        value = str(
+            value or ""
+        ).strip()
+
+        safe = "".join(
+            character
+            for character in value
+            if (
+                character.isalnum()
+                or character in {
+                    "-",
+                    "_",
+                }
+            )
+        )
+
+        if not safe:
+            raise ValueError(
+                "Invalid invoice storage path."
+            )
+
+        return safe
 
     @staticmethod
     def _serialize(item):
@@ -155,6 +225,18 @@ class PurchaseOrderService:
                     "po_number": po_number,
 
                     "status": "Issued",
+
+                    # Vendor invoice lifecycle starts as soon
+                    # as the Purchase Order is issued.
+                    "invoice_status": "Pending",
+
+                    "invoice_file_path": None,
+                    "invoice_original_name": None,
+                    "invoice_content_type": None,
+                    "invoice_received_at": None,
+
+                    "last_invoice_reminder_at": None,
+                    "invoice_reminder_count": 0,
 
                     "created_at": now,
                     "updated_at": now,
@@ -311,6 +393,328 @@ class PurchaseOrderService:
         )
 
         return serialized_po
+
+
+    def upload_invoice(
+        self,
+        po_number: str,
+        invoice: UploadFile,
+    ):
+        """
+        Upload or replace a vendor invoice for an
+        Issued Purchase Order.
+
+        Lifecycle:
+
+            Issued + Pending
+                -> upload
+                -> Received
+
+            Issued + Received
+                -> replace invoice
+                -> Received
+
+            Cancelled
+                -> upload rejected
+
+        Once invoice_status becomes Received,
+        the PO is excluded from daily invoice
+        reminder emails.
+        """
+
+        # ---------------------------------------------
+        # GET PURCHASE ORDER
+        # ---------------------------------------------
+
+        purchase_order = (
+            purchase_order_repository.get_by_po_number(
+                po_number
+            )
+        )
+
+        if not purchase_order:
+            raise ValueError(
+                "Purchase Order not found."
+            )
+
+        if (
+            purchase_order.get(
+                "status"
+            )
+            != "Issued"
+        ):
+            raise ValueError(
+                "Invoice can only be uploaded "
+                "for an Issued Purchase Order."
+            )
+
+        # ---------------------------------------------
+        # VALIDATE FILE NAME
+        # ---------------------------------------------
+
+        original_name = (
+            invoice.filename
+            or ""
+        ).strip()
+
+        if not original_name:
+            raise ValueError(
+                "Invoice file is required."
+            )
+
+        # Never trust directory information supplied
+        # as part of an uploaded filename.
+        original_name = Path(
+            original_name
+        ).name
+
+        extension = (
+            Path(
+                original_name
+            )
+            .suffix
+            .lower()
+        )
+
+        if (
+            extension
+            not in
+            ALLOWED_INVOICE_EXTENSIONS
+        ):
+            raise ValueError(
+                "Invoice must be a PDF, JPG, "
+                "JPEG, or PNG file."
+            )
+
+        content_type = (
+            invoice.content_type
+            or ""
+        ).lower()
+
+        if (
+            content_type
+            and content_type
+            not in
+            ALLOWED_INVOICE_CONTENT_TYPES
+        ):
+            raise ValueError(
+                "Invalid invoice file type."
+            )
+
+        # ---------------------------------------------
+        # PREPARE STORAGE
+        # ---------------------------------------------
+
+        job_number = (
+            self._safe_path_component(
+                purchase_order.get(
+                    "job_number",
+                    "",
+                )
+            )
+        )
+
+        safe_po_number = (
+            self._safe_path_component(
+                purchase_order.get(
+                    "po_number",
+                    "",
+                )
+            )
+        )
+
+        invoice_directory = (
+            INVOICE_ROOT
+            / job_number
+            / safe_po_number
+        )
+
+        invoice_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # Use a generated server filename.
+        #
+        # We still preserve the original filename
+        # separately in MongoDB.
+        stored_filename = (
+            f"invoice_"
+            f"{uuid4().hex}"
+            f"{extension}"
+        )
+
+        final_path = (
+            invoice_directory
+            / stored_filename
+        )
+
+        temporary_path = (
+            invoice_directory
+            / (
+                f".upload_"
+                f"{uuid4().hex}"
+                f".tmp"
+            )
+        )
+
+        # ---------------------------------------------
+        # SAVE FILE WITH SIZE LIMIT
+        # ---------------------------------------------
+
+        total_size = 0
+
+        try:
+
+            with temporary_path.open(
+                "wb"
+            ) as destination:
+
+                while True:
+
+                    chunk = (
+                        invoice.file.read(
+                            1024 * 1024
+                        )
+                    )
+
+                    if not chunk:
+                        break
+
+                    total_size += len(
+                        chunk
+                    )
+
+                    if (
+                        total_size
+                        >
+                        MAX_INVOICE_SIZE
+                    ):
+                        raise ValueError(
+                            "Invoice file size "
+                            "must not exceed 10 MB."
+                        )
+
+                    destination.write(
+                        chunk
+                    )
+
+            if total_size == 0:
+                raise ValueError(
+                    "Uploaded invoice file is empty."
+                )
+
+            # Atomic filesystem rename on the
+            # same filesystem.
+            temporary_path.replace(
+                final_path
+            )
+
+        except Exception:
+
+            if temporary_path.exists():
+                temporary_path.unlink(
+                    missing_ok=True
+                )
+
+            raise
+
+        finally:
+
+            try:
+                invoice.file.close()
+            except Exception:
+                pass
+
+        # ---------------------------------------------
+        # DATABASE UPDATE
+        # ---------------------------------------------
+
+        old_invoice_path = (
+            purchase_order.get(
+                "invoice_file_path"
+            )
+        )
+
+        try:
+
+            updated = (
+                purchase_order_repository
+                .mark_invoice_received(
+                    po_id=purchase_order["_id"],
+
+                    file_path=str(
+                        final_path
+                    ),
+
+                    original_name=
+                        original_name,
+
+                    content_type=(
+                        content_type
+                        or None
+                    ),
+                )
+            )
+
+            if not updated:
+
+                # PO may have been cancelled between
+                # validation and database update.
+
+                final_path.unlink(
+                    missing_ok=True
+                )
+
+                raise ValueError(
+                    "Purchase Order is no longer "
+                    "eligible for invoice upload."
+                )
+
+        except Exception:
+
+            final_path.unlink(
+                missing_ok=True
+            )
+
+            raise
+
+        # ---------------------------------------------
+        # REMOVE OLD FILE ONLY AFTER DB SUCCESS
+        #
+        # This supports Replace Invoice safely.
+        # ---------------------------------------------
+
+        if old_invoice_path:
+
+            old_path = Path(
+                old_invoice_path
+            )
+
+            try:
+
+                if (
+                    old_path.exists()
+                    and
+                    old_path.resolve()
+                    != final_path.resolve()
+                ):
+                    old_path.unlink()
+
+            except OSError as e:
+
+                # Do not fail a successful invoice
+                # upload just because stale-file
+                # cleanup failed.
+
+                print(
+                    "Old invoice cleanup failed:",
+                    e,
+                )
+
+        return self._serialize(
+            updated
+        )
 
     def list(
         self,
