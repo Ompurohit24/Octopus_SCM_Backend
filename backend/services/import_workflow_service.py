@@ -150,21 +150,77 @@ class ImportWorkflowService:
 
         # data = workflow.model_dump(exclude_unset=True)
 
-
         data = workflow.model_dump(
             exclude_unset=True,
             exclude_none=True,
         )
+
         print("========== MODEL DUMP ==========")
         print(data)
-        print("igm_status =", data.get("igm_status"))
-        print("igm_no =", data.get("igm_no"))
-        print("igm_date =", data.get("igm_date"))
 
+        # -------------------------------------------------
+        # SERVICE MAP CLEANUP
+        # -------------------------------------------------
+        # These fields must be replaced completely when
+        # services are selected/unselected in Update Job.
+        #
+        # Example:
+        #
+        # Existing:
+        # {
+        #     "FSSAI": {...},
+        #     "CDRUG": {...}
+        # }
+        #
+        # Incoming:
+        # {
+        #     "FSSAI": {...}
+        # }
+        #
+        # Result must NOT retain CDRUG.
+        # -------------------------------------------------
+
+        SERVICE_FIELDS = {
+            "other_gov_agency_type",
+            "other_services",
+        }
+
+        for field in SERVICE_FIELDS:
+
+            if field not in data:
+                continue
+
+            value = data[field]
+
+            if not isinstance(value, dict):
+                data[field] = {}
+                continue
+
+            cleaned = {}
+
+            for service_name, service_data in value.items():
+
+                # Ignore legacy numeric keys:
+                # "0", "1", "2", etc.
+                if str(service_name).isdigit():
+                    continue
+
+                if service_data is None:
+                    continue
+
+                cleaned[service_name] = service_data
+
+            data[field] = cleaned
+
+        # Remove empty strings from normal fields,
+        # but NEVER remove service fields.
         data = {
-            k: v
-            for k, v in data.items()
-            if v != ""
+            key: value
+            for key, value in data.items()
+            if (
+                    key in SERVICE_FIELDS
+                    or value != ""
+            )
         }
 
         from backend.utils.import_workflow_validator import (
