@@ -27,7 +27,7 @@ from backend.repositories.transporter_repository import (
 from backend.repositories.other_gov_agency_type_repository import (
     other_gov_agency_type_repository,
 )
-
+from backend.routes.purchase_order import router as purchase_order_router
 from backend.scheduler import (
     start_scheduler,
     stop_scheduler,
@@ -147,6 +147,7 @@ app.include_router(transporter_router)
 app.include_router(other_gov_agency_type_router)
 app.include_router(dropdown_router)
 app.include_router(master_router)
+app.include_router(purchase_order_router)
 
 @app.get("/")
 def root():
