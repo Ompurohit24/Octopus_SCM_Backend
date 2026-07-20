@@ -1,7 +1,16 @@
-from fastapi import APIRouter, HTTPException, Query
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
-from backend.models.vendor import VendorCreate, VendorUpdate
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Query,
+)
+
+from backend.models.vendor import (
+    VendorCreate,
+    VendorUpdate,
+)
 from backend.services.vendor_service import vendor_service
+
 
 router = APIRouter(
     prefix="/vendors",
@@ -28,8 +37,12 @@ def list_vendors(
 
 
 @router.get("/{vendor_id}")
-def get_vendor(vendor_id: str):
-    return vendor_service.get(vendor_id)
+def get_vendor(
+    vendor_id: str,
+):
+    return vendor_service.get(
+        vendor_id
+    )
 
 
 @router.post("")
@@ -42,8 +55,12 @@ def create_vendor(
             vendor,
             background_tasks,
         )
+
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        )
 
 
 @router.put("/{vendor_id}")
@@ -52,11 +69,22 @@ def update_vendor(
     vendor: VendorUpdate,
 ):
     try:
-        return vendor_service.update(vendor_id, vendor)
+        return vendor_service.update(
+            vendor_id,
+            vendor,
+        )
+
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        )
 
 
 @router.delete("/{vendor_id}")
-def delete_vendor(vendor_id: str):
-    return vendor_service.delete(vendor_id)
+def delete_vendor(
+    vendor_id: str,
+):
+    return vendor_service.delete(
+        vendor_id
+    )

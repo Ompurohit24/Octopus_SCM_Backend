@@ -2,7 +2,7 @@ import smtplib
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
+from email.mime.application import MIMEApplication
 from backend.config.settings import settings
 from html import escape
 
@@ -11,50 +11,153 @@ class EmailService:
     @staticmethod
     def send_customer_created_email(customer: dict):
 
+        # -------------------------------------------------
+        # NORMALIZE RECIPIENT EMAILS
+        #
+        # Backward compatible:
+        # email: "abc@example.com"
+        #
+        # New:
+        # email: [
+        #     "abc@example.com",
+        #     "accounts@example.com",
+        # ]
+        # -------------------------------------------------
+
+        raw_emails = customer.get("email", [])
+
+        if isinstance(raw_emails, str):
+            emails = [raw_emails]
+        elif isinstance(raw_emails, list):
+            emails = raw_emails
+        else:
+            emails = []
+
+        # Clean + remove duplicates case-insensitively.
+        recipients = []
+        seen = set()
+
+        for item in emails:
+            email = str(item).strip()
+
+            if not email:
+                continue
+
+            normalized = email.lower()
+
+            if normalized in seen:
+                continue
+
+            seen.add(normalized)
+            recipients.append(email)
+
+        # Do not attempt SMTP if no valid recipient exists.
+        if not recipients:
+            return
+
+        # -------------------------------------------------
+        # EMAIL MESSAGE
+        # -------------------------------------------------
+
         message = MIMEMultipart("alternative")
 
-        message["Subject"] = "Customer Profile Created - Octopus SCM"
+        message["Subject"] = (
+            "Customer Profile Created - Octopus SCM"
+        )
+
         message["From"] = settings.SMTP_FROM
-        message["To"] = customer["email"]
+
+        # Visible recipients.
+        message["To"] = ", ".join(recipients)
+
+        email_display = ", ".join(recipients)
 
         html = f"""
         <html>
             <body style="font-family:Arial,sans-serif;">
+
                 <h2>Welcome to Octopus SCM</h2>
 
-                <p>Dear <b>{customer["customer_name"]}</b>,</p>
+                <p>
+                    Dear <b>{customer["customer_name"]}</b>,
+                </p>
 
-                <p>Your customer profile has been successfully created.</p>
+                <p>
+                    Your customer profile has been
+                    successfully created.
+                </p>
 
                 <table cellpadding="6">
-                    <tr><td><b>Customer Code</b></td><td>{customer["customer_code"]}</td></tr>
-                    <tr><td><b>Name</b></td><td>{customer["customer_name"]}</td></tr>
-                    <tr><td><b>Email</b></td><td>{customer["email"]}</td></tr>
-                    <tr><td><b>Phone</b></td><td>{customer["phone"]}</td></tr>
-                    <tr><td><b>GSTIN</b></td><td>{customer["gstin"]}</td></tr>
-                    <tr><td><b>PAN</b></td><td>{customer["pan"]}</td></tr>
-                    <tr><td><b>TAN</b></td><td>{customer["tan"]}</td></tr>
+
+                    <tr>
+                        <td><b>Customer Code</b></td>
+                        <td>{customer["customer_code"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Name</b></td>
+                        <td>{customer["customer_name"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Email</b></td>
+                        <td>{email_display}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Phone</b></td>
+                        <td>{customer["phone"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>GSTIN</b></td>
+                        <td>{customer["gstin"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>PAN</b></td>
+                        <td>{customer["pan"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>TAN</b></td>
+                        <td>{customer["tan"]}</td>
+                    </tr>
+
                 </table>
 
                 <br>
 
-                <p>Thank you for choosing Octopus SCM.</p>
+                <p>
+                    Thank you for choosing Octopus SCM.
+                </p>
 
                 <p>
                     Regards,<br>
                     Octopus SCM Team
                 </p>
+
             </body>
         </html>
         """
 
-        message.attach(MIMEText(html, "html"))
+        message.attach(
+            MIMEText(
+                html,
+                "html",
+            )
+        )
+
+        # -------------------------------------------------
+        # SMTP
+        # -------------------------------------------------
 
         with smtplib.SMTP(
                 settings.SMTP_HOST,
                 int(settings.SMTP_PORT),
                 timeout=30,
         ) as server:
+
             server.ehlo()
             server.starttls()
             server.ehlo()
@@ -64,15 +167,74 @@ class EmailService:
                 settings.SMTP_PASSWORD,
             )
 
-            server.send_message(message)
+            # IMPORTANT:
+            # Explicitly pass every email as an SMTP recipient.
+            server.sendmail(
+                settings.SMTP_FROM,
+                recipients,
+                message.as_string(),
+            )
 
     @staticmethod
     def send_vendor_created_email(vendor: dict):
+
+        # Supports both old and new vendor records:
+        #
+        # Old:
+        # email: "vendor@example.com"
+        #
+        # New:
+        # email: [
+        #     "vendor@example.com",
+        #     "accounts@example.com",
+        # ]
+
+        raw_emails = vendor.get("email", [])
+
+        if isinstance(raw_emails, str):
+            emails = [raw_emails]
+
+        elif isinstance(raw_emails, list):
+            emails = raw_emails
+
+        else:
+            emails = []
+
+        # Clean and remove duplicate emails
+        # case-insensitively.
+        recipients = []
+        seen = set()
+
+        for item in emails:
+            email = str(item).strip()
+
+            if not email:
+                continue
+
+            normalized = email.lower()
+
+            if normalized in seen:
+                continue
+
+            seen.add(normalized)
+            recipients.append(email)
+
+        # Avoid SMTP call when there is no recipient.
+        if not recipients:
+            return
+
         message = MIMEMultipart("alternative")
 
-        message["Subject"] = "Vendor Profile Created - Octopus SCM"
+        message["Subject"] = (
+            "Vendor Profile Created - Octopus SCM"
+        )
+
         message["From"] = settings.SMTP_FROM
-        message["To"] = vendor["email"]
+
+        # Display all recipients in To.
+        message["To"] = ", ".join(recipients)
+
+        email_display = ", ".join(recipients)
 
         html = f"""
         <html>
@@ -80,23 +242,59 @@ class EmailService:
 
                 <h2>Welcome to Octopus SCM</h2>
 
-                <p>Dear <b>{vendor["vendor_name"]}</b>,</p>
+                <p>
+                    Dear <b>{vendor["vendor_name"]}</b>,
+                </p>
 
-                <p>Your vendor profile has been successfully created.</p>
+                <p>
+                    Your vendor profile has been
+                    successfully created.
+                </p>
 
                 <table cellpadding="6">
-                    <tr><td><b>Vendor Code</b></td><td>{vendor["vendor_code"]}</td></tr>
-                    <tr><td><b>Vendor Name</b></td><td>{vendor["vendor_name"]}</td></tr>
-                    <tr><td><b>Type of Service</b></td><td>{vendor["type_of_service"]}</td></tr>
-                    <tr><td><b>Email</b></td><td>{vendor["email"]}</td></tr>
-                    <tr><td><b>Phone</b></td><td>{vendor["phone"]}</td></tr>
-                    <tr><td><b>GSTIN</b></td><td>{vendor["gstin"]}</td></tr>
-                    <tr><td><b>PAN</b></td><td>{vendor["pan"]}</td></tr>
+
+                    <tr>
+                        <td><b>Vendor Code</b></td>
+                        <td>{vendor["vendor_code"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Vendor Name</b></td>
+                        <td>{vendor["vendor_name"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Type of Service</b></td>
+                        <td>{vendor["type_of_service"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Email</b></td>
+                        <td>{email_display}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Phone</b></td>
+                        <td>{vendor["phone"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>GSTIN</b></td>
+                        <td>{vendor["gstin"]}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>PAN</b></td>
+                        <td>{vendor["pan"]}</td>
+                    </tr>
+
                 </table>
 
                 <br>
 
-                <p>Thank you for being associated with Octopus SCM.</p>
+                <p>
+                    Thank you for working with Octopus SCM.
+                </p>
 
                 <p>
                     Regards,<br>
@@ -107,13 +305,19 @@ class EmailService:
         </html>
         """
 
-        message.attach(MIMEText(html, "html"))
+        message.attach(
+            MIMEText(
+                html,
+                "html",
+            )
+        )
 
         with smtplib.SMTP(
                 settings.SMTP_HOST,
                 int(settings.SMTP_PORT),
                 timeout=30,
         ) as server:
+
             server.ehlo()
             server.starttls()
             server.ehlo()
@@ -123,7 +327,13 @@ class EmailService:
                 settings.SMTP_PASSWORD,
             )
 
-            server.send_message(message)
+            # Send the same Vendor Created email
+            # to every registered vendor email.
+            server.sendmail(
+                settings.SMTP_FROM,
+                recipients,
+                message.as_string(),
+            )
 
     @staticmethod
     def send_import_job_created_email(email: str, job: dict):
@@ -499,6 +709,440 @@ class EmailService:
             settings.SMTP_HOST,
             int(settings.SMTP_PORT),
             timeout=30,
+        ) as server:
+
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+
+            server.login(
+                settings.SMTP_USERNAME,
+                settings.SMTP_PASSWORD,
+            )
+
+            server.sendmail(
+                settings.SMTP_FROM,
+                recipients,
+                message.as_string(),
+
+           )
+
+    @staticmethod
+    def send_purchase_order_email(
+            vendor: dict,
+            purchase_order: dict,
+            pdf_bytes: bytes,
+    ):
+        # -------------------------------------------------
+        # NORMALIZE VENDOR EMAILS
+        #
+        # Supports:
+        # email: "vendor@example.com"
+        #
+        # and:
+        # email: [
+        #     "vendor@example.com",
+        #     "accounts@example.com",
+        # ]
+        # -------------------------------------------------
+
+        raw_emails = vendor.get("email", [])
+
+        if isinstance(raw_emails, str):
+            emails = [raw_emails]
+
+        elif isinstance(raw_emails, list):
+            emails = raw_emails
+
+        else:
+            emails = []
+
+        recipients = []
+        seen = set()
+
+        for item in emails:
+            email = str(item).strip()
+
+            if not email:
+                continue
+
+            normalized = email.lower()
+
+            if normalized in seen:
+                continue
+
+            seen.add(normalized)
+            recipients.append(email)
+
+        if not recipients:
+            return
+
+        # -------------------------------------------------
+        # SAFE DISPLAY VALUES
+        # -------------------------------------------------
+
+        po_number = escape(
+            str(
+                purchase_order.get(
+                    "po_number",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        job_number = escape(
+            str(
+                purchase_order.get(
+                    "job_number",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        bl_no = escape(
+            str(
+                purchase_order.get(
+                    "bl_no",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        be_no = escape(
+            str(
+                purchase_order.get(
+                    "be_no",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        cfs_name = escape(
+            str(
+                purchase_order.get(
+                    "cfs_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        consignee_name = escape(
+            str(
+                purchase_order.get(
+                    "consignee_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        service_name = escape(
+            str(
+                purchase_order.get(
+                    "service_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        category = escape(
+            str(
+                purchase_order.get(
+                    "category",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        unit = escape(
+            str(
+                purchase_order.get(
+                    "unit",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        tariff = purchase_order.get(
+            "tariff"
+        )
+
+        tariff_display = (
+            f"{float(tariff):,.2f}"
+            if tariff is not None
+            else "-"
+        )
+
+        vendor_name = escape(
+            str(
+                vendor.get(
+                    "vendor_name",
+                    purchase_order.get(
+                        "vendor_name",
+                        "",
+                    ),
+                )
+                or ""
+            )
+        )
+
+        # -------------------------------------------------
+        # CONTAINER HTML
+        # -------------------------------------------------
+
+        containers = purchase_order.get(
+            "containers",
+            [],
+        ) or []
+
+        container_rows = ""
+
+        for container in containers:
+            container_number = escape(
+                str(
+                    container.get(
+                        "container_number",
+                        "",
+                    )
+                    or ""
+                )
+            )
+
+            size = escape(
+                str(
+                    container.get(
+                        "size",
+                        "",
+                    )
+                    or ""
+                )
+            )
+
+            container_rows += f"""
+            <tr>
+                <td
+                    style="
+                        padding:6px;
+                        border:1px solid #ddd;
+                    "
+                >
+                    {container_number}
+                </td>
+
+                <td
+                    style="
+                        padding:6px;
+                        border:1px solid #ddd;
+                    "
+                >
+                    {size}
+                </td>
+            </tr>
+            """
+
+        if not container_rows:
+            container_rows = """
+            <tr>
+                <td
+                    colspan="2"
+                    style="
+                        padding:6px;
+                        border:1px solid #ddd;
+                    "
+                >
+                    -
+                </td>
+            </tr>
+            """
+
+        # -------------------------------------------------
+        # EMAIL
+        # -------------------------------------------------
+
+        message = MIMEMultipart("mixed")
+
+        message["Subject"] = (
+            f"Purchase Order {po_number} - "
+            f"Octopus SCM"
+        )
+
+        message["From"] = settings.SMTP_FROM
+
+        message["To"] = ", ".join(
+            recipients
+        )
+
+        html = f"""
+        <html>
+            <body
+                style="
+                    font-family:Arial,sans-serif;
+                    color:#222;
+                "
+            >
+
+                <h2>Purchase Order Issued</h2>
+
+                <p>
+                    Dear <b>{vendor_name}</b>,
+                </p>
+
+                <p>
+                    Please find attached Purchase Order
+                    <b>{po_number}</b>.
+                </p>
+
+                <table
+                    cellpadding="6"
+                    cellspacing="0"
+                >
+                    <tr>
+                        <td><b>PO Number</b></td>
+                        <td>{po_number}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Job Number</b></td>
+                        <td>{job_number}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>BL No</b></td>
+                        <td>{bl_no or "-"}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>BE No</b></td>
+                        <td>{be_no or "-"}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Consignee</b></td>
+                        <td>{consignee_name or "-"}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>CFS Name</b></td>
+                        <td>{cfs_name or "-"}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Category</b></td>
+                        <td>{category}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Service</b></td>
+                        <td>{service_name}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Tariff Unit</b></td>
+                        <td>{unit or "-"}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Tariff Amount</b></td>
+                        <td>{tariff_display}</td>
+                    </tr>
+                </table>
+
+                <h3>Selected Containers</h3>
+
+                <table
+                    cellpadding="0"
+                    cellspacing="0"
+                    style="
+                        border-collapse:collapse;
+                        width:100%;
+                        max-width:600px;
+                    "
+                >
+                    <thead>
+                        <tr>
+                            <th
+                                style="
+                                    padding:6px;
+                                    border:1px solid #ddd;
+                                    text-align:left;
+                                "
+                            >
+                                Container Number
+                            </th>
+
+                            <th
+                                style="
+                                    padding:6px;
+                                    border:1px solid #ddd;
+                                    text-align:left;
+                                "
+                            >
+                                Size
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {container_rows}
+                    </tbody>
+                </table>
+
+                <br>
+
+                <p>
+                    The Purchase Order PDF is attached
+                    to this email.
+                </p>
+
+                <p>
+                    Regards,<br>
+                    Octopus SCM Team
+                </p>
+
+            </body>
+        </html>
+        """
+
+        message.attach(
+            MIMEText(
+                html,
+                "html",
+            )
+        )
+
+        # -------------------------------------------------
+        # PDF ATTACHMENT
+        # -------------------------------------------------
+
+        attachment = MIMEApplication(
+            pdf_bytes,
+            _subtype="pdf",
+        )
+
+        attachment.add_header(
+            "Content-Disposition",
+            "attachment",
+            filename=f"{po_number}.pdf",
+        )
+
+        message.attach(attachment)
+
+        # -------------------------------------------------
+        # SMTP
+        # -------------------------------------------------
+
+        with smtplib.SMTP(
+                settings.SMTP_HOST,
+                int(settings.SMTP_PORT),
+                timeout=30,
         ) as server:
 
             server.ehlo()

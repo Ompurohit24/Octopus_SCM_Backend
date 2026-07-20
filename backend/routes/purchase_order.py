@@ -1,4 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Query,
+)
 
 from backend.models.purchase_order import PurchaseOrderCreate
 from backend.services.purchase_order_service import purchase_order_service
@@ -26,10 +31,12 @@ def list_purchase_orders(
 @router.post("")
 def create_purchase_order(
     purchase_order: PurchaseOrderCreate,
+    background_tasks: BackgroundTasks,
 ):
     try:
         return purchase_order_service.create(
-            purchase_order.model_dump()
+            data=purchase_order.model_dump(),
+            background_tasks=background_tasks,
         )
 
     except ValueError as e:

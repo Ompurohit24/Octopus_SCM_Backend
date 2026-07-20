@@ -4,11 +4,26 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class PurchaseOrderContainer(BaseModel):
+    container_number: str
+    size: str = ""
+
+
 class PurchaseOrderCreate(BaseModel):
     job_id: str
     job_number: str
 
     consignee_name: str = ""
+
+    # Snapshot job/workflow details into the PO.
+    bl_no: str = ""
+    be_no: str = ""
+    cfs_name: str = ""
+
+    # Only containers selected while creating this PO.
+    containers: list[PurchaseOrderContainer] = Field(
+        default_factory=list
+    )
 
     category: Literal[
         "Other Gov Agency",
@@ -29,6 +44,7 @@ class PurchaseOrderCreate(BaseModel):
 
     tariff: Optional[float] = None
 
+    # Keep legacy fields for existing POs.
     tariff_20: Optional[float] = None
     tariff_40: Optional[float] = None
 
@@ -60,6 +76,14 @@ class PurchaseOrderResponse(BaseModel):
 
     consignee_name: str
 
+    bl_no: str = ""
+    be_no: str = ""
+    cfs_name: str = ""
+
+    containers: list[PurchaseOrderContainer] = Field(
+        default_factory=list
+    )
+
     category: str
     service_name: str
 
@@ -72,6 +96,8 @@ class PurchaseOrderResponse(BaseModel):
     unit: Optional[str] = None
 
     tariff: Optional[float] = None
+
+    # Legacy compatibility.
     tariff_20: Optional[float] = None
     tariff_40: Optional[float] = None
 

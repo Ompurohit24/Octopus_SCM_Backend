@@ -3,6 +3,7 @@ from pymongo import ASCENDING
 from backend.database.mongo import db
 from backend.repositories.base_repository import BaseRepository
 
+
 customers = db["customers"]
 
 
@@ -22,6 +23,19 @@ class CustomerRepository(BaseRepository):
             [("customer_name", ASCENDING)]
         )
 
+        # Supports both:
+        #
+        # Old:
+        # email: "abc@example.com"
+        #
+        # New:
+        # email: [
+        #     "abc@example.com",
+        #     "accounts@example.com",
+        # ]
+        #
+        # When email is an array, MongoDB automatically
+        # treats this as a multikey unique index.
         self.collection.create_index(
             [("email", ASCENDING)],
             unique=True,
@@ -57,6 +71,7 @@ class CustomerRepository(BaseRepository):
         )
 
     def find_by_name(self, name):
+
         return self.collection.find_one(
             {
                 "customer_name": name,
@@ -65,6 +80,7 @@ class CustomerRepository(BaseRepository):
         )
 
     def find_one(self, query):
+
         return self.collection.find_one(query)
 
     def search(
@@ -93,12 +109,16 @@ class CustomerRepository(BaseRepository):
                         "$options": "i",
                     }
                 },
+
+                # MongoDB regex matching works against
+                # both string email values and arrays.
                 {
                     "email": {
                         "$regex": search,
                         "$options": "i",
                     }
                 },
+
                 {
                     "phone": {
                         "$regex": search,

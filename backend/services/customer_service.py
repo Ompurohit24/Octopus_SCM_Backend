@@ -1,8 +1,10 @@
 from datetime import datetime
 from pathlib import Path
 import shutil
+
 from fastapi import BackgroundTasks
 from pymongo.errors import DuplicateKeyError
+
 from backend.database.mongo import client
 from backend.models.customer import CustomerCreate, CustomerUpdate
 from backend.repositories.counter_repository import counter_repository
@@ -14,12 +16,8 @@ from backend.utils.serializer import serialize, serialize_list
 KYC_ROOT = Path("KYC")
 KYC_ROOT.mkdir(exist_ok=True)
 
-class CustomerService:
 
-    # @staticmethod
-    # def generate_customer_code():
-    #     number = counter_repository.next("customer")
-    #     return f"CUS-{number:04d}"
+class CustomerService:
 
     @staticmethod
     def generate_customer_code(session=None):
@@ -31,16 +29,15 @@ class CustomerService:
 
     @staticmethod
     def get_next_customer_code():
-
         counter = counter_repository.current("customer")
 
         return f"CUS-{counter + 1:04d}"
 
     @staticmethod
     def save_kyc_documents(
-            customer_name: str,
-            gst_document,
-            pan_document,
+        customer_name: str,
+        gst_document,
+        pan_document,
     ):
         customer_folder = KYC_ROOT / customer_name
         customer_folder.mkdir(parents=True, exist_ok=True)
@@ -69,11 +66,11 @@ class CustomerService:
 
     @staticmethod
     def create(
-            customer: CustomerCreate,
-            user_id: str,
-            background_tasks: BackgroundTasks,
-            gst_document=None,
-            pan_document=None,
+        customer: CustomerCreate,
+        user_id: str,
+        background_tasks: BackgroundTasks,
+        gst_document=None,
+        pan_document=None,
     ):
         try:
             with client.start_session() as session:
@@ -84,9 +81,73 @@ class CustomerService:
 
                     document = customer.model_dump()
 
+                    # -------------------------------------------------
+                    # CUSTOMER NAME DUPLICATE CHECK
+                    # -------------------------------------------------
+
+                    customer_name = document.get("customer_name")
+
+                    if customer_name:
+                        existing = customer_repository.find_one(
+                            {
+                                "customer_name": {
+                                    "$regex": f"^{customer_name.strip()}$",
+                                    "$options": "i",
+                                },
+                                "is_deleted": False,
+                            }
+                        )
+
+                        if existing:
+                            raise ValueError(
+                                "Customer Name already exists."
+                            )
+
+                    # -------------------------------------------------
+                    # MULTIPLE EMAIL DUPLICATE CHECK
+                    #
+                    # Works with:
+                    # Old records:
+                    #   email: "abc@example.com"
+                    #
+                    # New records:
+                    #   email: [
+                    #       "abc@example.com",
+                    #       "accounts@example.com"
+                    #   ]
+                    # -------------------------------------------------
+
+                    emails = document.get("email") or []
+
+                    if isinstance(emails, str):
+                        emails = [emails]
+
+                    for email in emails:
+                        email_value = str(email).strip()
+
+                        if not email_value:
+                            continue
+
+                        existing = customer_repository.find_one(
+                            {
+                                "email": {
+                                    "$regex": f"^{email_value}$",
+                                    "$options": "i",
+                                },
+                                "is_deleted": False,
+                            }
+                        )
+
+                        if existing:
+                            raise ValueError(
+                                f"Email {email_value} already exists."
+                            )
+
+                    # -------------------------------------------------
+                    # OTHER DUPLICATE CHECKS
+                    # -------------------------------------------------
+
                     duplicates = [
-                        ("customer_name", "Customer Name"),
-                        ("email", "Email"),
                         ("phone", "Phone Number"),
                         ("gstin", "GSTIN"),
                         ("pan", "PAN"),
@@ -99,31 +160,28 @@ class CustomerService:
                         if not value:
                             continue
 
-                        if field == "customer_name":
-                            existing = customer_repository.find_one(
-                                {
-                                    "customer_name": {
-                                        "$regex": f"^{value.strip()}$",
-                                        "$options": "i",
-                                    },
-                                    "is_deleted": False,
-                                }
-                            )
-                        else:
-                            existing = customer_repository.find_one(
-                                {
-                                    field: value,
-                                    "is_deleted": False,
-                                }
-                            )
+                        existing = customer_repository.find_one(
+                            {
+                                field: value,
+                                "is_deleted": False,
+                            }
+                        )
 
                         if existing:
-                            raise ValueError(f"{label} already exists.")
+                            raise ValueError(
+                                f"{label} already exists."
+                            )
 
-                    gst_path, pan_path = CustomerService.save_kyc_documents(
-                        customer.customer_name,
-                        gst_document,
-                        pan_document,
+                    # -------------------------------------------------
+                    # KYC DOCUMENTS
+                    # -------------------------------------------------
+
+                    gst_path, pan_path = (
+                        CustomerService.save_kyc_documents(
+                            customer.customer_name,
+                            gst_document,
+                            pan_document,
+                        )
                     )
 
                     document.update(
@@ -147,9 +205,7 @@ class CustomerService:
 
                     document["_id"] = result.inserted_id
 
-
         except DuplicateKeyError as e:
-
             raise ValueError(str(e))
 
         except Exception:
@@ -162,14 +218,12 @@ class CustomerService:
 
         return serialize(document)
 
-
     @staticmethod
     def get_all(
         skip: int = 0,
         limit: int = 20,
         search: str = "",
     ):
-
         customers = customer_repository.search(
             search=search,
             skip=skip,
@@ -189,7 +243,6 @@ class CustomerService:
 
     @staticmethod
     def get_by_id(customer_id: str):
-
         customer = customer_repository.find_by_id(customer_id)
 
         if not customer:
@@ -202,7 +255,6 @@ class CustomerService:
         customer_id: str,
         customer: CustomerUpdate,
     ):
-
         data = customer.model_dump(exclude_unset=True)
 
         data["updated_at"] = datetime.utcnow()
@@ -218,7 +270,6 @@ class CustomerService:
 
     @staticmethod
     def delete(customer_id: str):
-
         customer_repository.soft_delete(customer_id)
 
         return {

@@ -1,6 +1,12 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    field_validator,
+)
 
 
 class VendorCreate(BaseModel):
@@ -9,7 +15,18 @@ class VendorCreate(BaseModel):
 
     address: str
 
-    email: EmailStr
+    # Supports:
+    # email: "vendor@example.com"
+    #
+    # and:
+    # email: [
+    #     "vendor@example.com",
+    #     "accounts@example.com",
+    # ]
+    #
+    # Internally always normalized to a list.
+    email: list[EmailStr]
+
     countryCode: str
     phone: str
 
@@ -18,6 +35,45 @@ class VendorCreate(BaseModel):
 
     type_of_service: str
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_emails(cls, value):
+        if value is None:
+            return []
+
+        if isinstance(value, str):
+            value = value.strip()
+
+            if not value:
+                return []
+
+            return [value]
+
+        if isinstance(value, list):
+            cleaned = []
+            seen = set()
+
+            for item in value:
+                if item is None:
+                    continue
+
+                email = str(item).strip()
+
+                if not email:
+                    continue
+
+                normalized = email.lower()
+
+                if normalized in seen:
+                    continue
+
+                seen.add(normalized)
+                cleaned.append(email)
+
+            return cleaned
+
+        return value
+
 
 class VendorUpdate(BaseModel):
     vendor_code: Optional[str] = None
@@ -25,7 +81,9 @@ class VendorUpdate(BaseModel):
 
     address: Optional[str] = None
 
-    email: Optional[EmailStr] = None
+    # Supports existing string values as well as new arrays.
+    email: Optional[list[EmailStr]] = None
+
     countryCode: Optional[str] = None
     phone: Optional[str] = None
 
@@ -33,6 +91,45 @@ class VendorUpdate(BaseModel):
     pan: Optional[str] = None
 
     type_of_service: Optional[str] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_emails(cls, value):
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            value = value.strip()
+
+            if not value:
+                return []
+
+            return [value]
+
+        if isinstance(value, list):
+            cleaned = []
+            seen = set()
+
+            for item in value:
+                if item is None:
+                    continue
+
+                email = str(item).strip()
+
+                if not email:
+                    continue
+
+                normalized = email.lower()
+
+                if normalized in seen:
+                    continue
+
+                seen.add(normalized)
+                cleaned.append(email)
+
+            return cleaned
+
+        return value
 
 
 class VendorResponse(BaseModel):
@@ -43,7 +140,8 @@ class VendorResponse(BaseModel):
 
     address: str
 
-    email: EmailStr
+    email: list[EmailStr]
+
     country_code: str
     phone: str
 

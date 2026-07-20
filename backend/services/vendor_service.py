@@ -16,7 +16,12 @@ class VendorService:
             "vendor_code": f"VEN-{counter + 1:04d}"
         }
 
-    def list(self, search: str, skip: int, limit: int):
+    def list(
+        self,
+        search: str,
+        skip: int,
+        limit: int,
+    ):
         vendors = vendor_repository.search(
             search=search,
             skip=skip,
@@ -50,34 +55,93 @@ class VendorService:
         vendor: VendorCreate,
         background_tasks: BackgroundTasks,
     ):
+        # -------------------------------------------------
+        # NORMALIZE EMAILS
+        # -------------------------------------------------
+
+        emails = vendor.email or []
+
+        # Extra backward compatibility in case this service
+        # is ever called without Pydantic normalization.
+        if isinstance(emails, str):
+            emails = [emails]
+
+        # -------------------------------------------------
+        # CHECK NON-EMAIL DUPLICATES
+        # -------------------------------------------------
+
         duplicate = vendor_repository.find_duplicate(
             vendor_name=vendor.vendor_name,
             gstin=vendor.gstin,
             pan=vendor.pan,
-            email=vendor.email,
+            email=None,
             phone=vendor.phone,
         )
 
         if duplicate:
             messages = {
-                "vendor_name": "Vendor Name already exists.",
-                "gstin": "GSTIN already exists.",
-                "pan": "PAN already exists.",
-                "email": "Email already exists.",
-                "phone": "Mobile Number already exists.",
+                "vendor_name":
+                    "Vendor Name already exists.",
+                "gstin":
+                    "GSTIN already exists.",
+                "pan":
+                    "PAN already exists.",
+                "phone":
+                    "Mobile Number already exists.",
             }
 
-            raise ValueError(messages[duplicate])
+            raise ValueError(
+                messages.get(
+                    duplicate,
+                    "Vendor already exists.",
+                )
+            )
+
+        # -------------------------------------------------
+        # CHECK EVERY EMAIL
+        #
+        # Works against:
+        #
+        # Old MongoDB:
+        # email: "vendor@example.com"
+        #
+        # New MongoDB:
+        # email: [
+        #     "vendor@example.com",
+        #     "accounts@example.com"
+        # ]
+        # -------------------------------------------------
+
+        for email in emails:
+            email_value = str(email).strip()
+
+            if not email_value:
+                continue
+
+            duplicate = vendor_repository.find_duplicate(
+                email=email_value,
+            )
+
+            if duplicate == "email":
+                raise ValueError(
+                    f"Email {email_value} already exists."
+                )
+
+        # -------------------------------------------------
+        # GENERATE VENDOR CODE
+        # -------------------------------------------------
 
         number = counter_repository.next("vendor")
         vendor_code = f"VEN-{number:04d}"
 
         document = vendor.model_dump()
 
-        # Never trust the frontend-generated code during creation.
+        # Never trust frontend-generated code during creation.
         document["vendor_code"] = vendor_code
 
-        created_vendor = vendor_repository.create(document)
+        created_vendor = vendor_repository.create(
+            document
+        )
 
         background_tasks.add_task(
             email_service.send_vendor_created_email,
@@ -91,7 +155,9 @@ class VendorService:
         vendor_id: str,
         vendor: VendorUpdate,
     ):
-        existing = vendor_repository.get(vendor_id)
+        existing = vendor_repository.get(
+            vendor_id
+        )
 
         if not existing:
             raise HTTPException(
@@ -99,51 +165,104 @@ class VendorService:
                 detail="Vendor not found.",
             )
 
+        update_data = vendor.model_dump(
+            exclude_unset=True
+        )
+
         merged = {
             **existing,
-            **vendor.model_dump(exclude_unset=True),
+            **update_data,
         }
 
+        # -------------------------------------------------
+        # CHECK NON-EMAIL DUPLICATES
+        # -------------------------------------------------
+
         duplicate = vendor_repository.find_duplicate(
-            vendor_name=merged["vendor_name"],
-            gstin=merged["gstin"],
-            pan=merged["pan"],
-            email=merged["email"],
-            phone=merged["phone"],
+            vendor_name=merged.get("vendor_name"),
+            gstin=merged.get("gstin"),
+            pan=merged.get("pan"),
+            email=None,
+            phone=merged.get("phone"),
             exclude_id=vendor_id,
         )
 
         if duplicate:
             messages = {
-                "vendor_name": "Vendor Name already exists.",
-                "gstin": "GSTIN already exists.",
-                "pan": "PAN already exists.",
-                "email": "Email already exists.",
-                "phone": "Mobile Number already exists.",
+                "vendor_name":
+                    "Vendor Name already exists.",
+                "gstin":
+                    "GSTIN already exists.",
+                "pan":
+                    "PAN already exists.",
+                "phone":
+                    "Mobile Number already exists.",
             }
 
-            raise ValueError(messages[duplicate])
+            raise ValueError(
+                messages.get(
+                    duplicate,
+                    "Vendor already exists.",
+                )
+            )
+
+        # -------------------------------------------------
+        # CHECK EVERY EMAIL ON UPDATE
+        # -------------------------------------------------
+
+        emails = merged.get("email") or []
+
+        if isinstance(emails, str):
+            emails = [emails]
+
+        for email in emails:
+            email_value = str(email).strip()
+
+            if not email_value:
+                continue
+
+            duplicate = vendor_repository.find_duplicate(
+                email=email_value,
+                exclude_id=vendor_id,
+            )
+
+            if duplicate == "email":
+                raise ValueError(
+                    f"Email {email_value} already exists."
+                )
+
+        # -------------------------------------------------
+        # UPDATE
+        # -------------------------------------------------
 
         vendor_repository.update(
             vendor_id,
-            vendor.model_dump(exclude_unset=True),
+            update_data,
         )
 
-        updated_vendor = vendor_repository.get(vendor_id)
+        updated_vendor = vendor_repository.get(
+            vendor_id
+        )
 
         return serialize(updated_vendor)
 
-    def delete(self, vendor_id: str):
+    def delete(
+        self,
+        vendor_id: str,
+    ):
         if not vendor_repository.get(vendor_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Vendor not found.",
             )
 
-        vendor_repository.delete(vendor_id)
+        vendor_repository.delete(
+            vendor_id
+        )
 
         return {
-            "message": "Vendor deleted successfully."
+            "message":
+                "Vendor deleted successfully."
         }
 
 

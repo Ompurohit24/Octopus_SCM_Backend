@@ -1,5 +1,5 @@
 from pymongo import ASCENDING
-
+import re
 from backend.database.mongo import db
 from backend.repositories.base_repository import BaseRepository
 
@@ -82,11 +82,11 @@ class VendorRepository(BaseRepository):
     def find_duplicate(
             self,
             *,
-            vendor_name: str,
-            gstin: str,
-            pan: str,
-            email: str,
-            phone: str,
+            vendor_name: str | None = None,
+            gstin: str | None = None,
+            pan: str | None = None,
+            email: str | None = None,
+            phone: str | None = None,
             exclude_id: str | None = None,
     ):
         checks = {
@@ -98,13 +98,32 @@ class VendorRepository(BaseRepository):
         }
 
         for field, value in checks.items():
-            query = {
-                field: value,
-                "is_deleted": False,
-            }
+
+            # Skip fields that are not being checked.
+            if value is None or value == "":
+                continue
+
+            # Customer/vendor names and emails should
+            # be checked case-insensitively.
+            if field in {"vendor_name", "email"}:
+                query = {
+                    field: {
+                        "$regex": f"^{re.escape(str(value))}$",
+                        "$options": "i",
+                    },
+                    "is_deleted": False,
+                }
+
+            else:
+                query = {
+                    field: value,
+                    "is_deleted": False,
+                }
 
             if exclude_id:
-                query["_id"] = {"$ne": self.to_object_id(exclude_id)}
+                query["_id"] = {
+                    "$ne": self.to_object_id(exclude_id)
+                }
 
             if self.collection.find_one(query):
                 return field
