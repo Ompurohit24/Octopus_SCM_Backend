@@ -4,6 +4,13 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+PurchaseOrderStatus = Literal[
+    "Draft",
+    "Issued",
+    "Cancelled",
+]
+
+
 class PurchaseOrderContainer(BaseModel):
     container_number: str
     size: str = ""
@@ -57,13 +64,20 @@ class PurchaseOrderUpdate(BaseModel):
     vendor_code: Optional[str] = None
     vendor_name: Optional[str] = None
 
-    status: Optional[
-        Literal[
-            "Draft",
-            "Issued",
-            "Cancelled",
-        ]
-    ] = None
+    status: Optional[PurchaseOrderStatus] = None
+
+
+class PurchaseOrderCancel(BaseModel):
+    """
+    Used when a service is removed/unselected from an Import Workflow
+    after a Purchase Order has already been issued.
+
+    Cancellation must preserve the PO for audit/history.
+    """
+
+    reason: Optional[str] = (
+        "Service removed from Import Workflow"
+    )
 
 
 class PurchaseOrderResponse(BaseModel):
@@ -104,7 +118,11 @@ class PurchaseOrderResponse(BaseModel):
     enable_20: bool = False
     enable_40: bool = False
 
-    status: str = "Issued"
+    status: PurchaseOrderStatus = "Issued"
+
+    # Cancellation audit information.
+    cancellation_reason: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
 
     created_at: datetime
     updated_at: datetime

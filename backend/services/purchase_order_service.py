@@ -70,6 +70,32 @@ class PurchaseOrderService:
                 e,
             )
 
+    @staticmethod
+    def _send_purchase_order_cancellation_email(
+        vendor: dict,
+        purchase_order: dict,
+    ):
+        """
+        Background task.
+
+        Runs only after the PO cancellation has been
+        successfully committed.
+
+        Email failure must not roll back cancellation.
+        """
+
+        try:
+            email_service.send_purchase_order_cancellation_email(
+                vendor=vendor,
+                purchase_order=purchase_order,
+            )
+
+        except Exception as e:
+            print(
+                "Purchase Order cancellation email failed:",
+                e,
+            )
+
     def create(
         self,
         data: dict,
@@ -151,12 +177,135 @@ class PurchaseOrderService:
 
         # ---------------------------------------------
         # SEND PDF + EMAIL IN BACKGROUND
-        #
-        # Do this only AFTER MongoDB transaction commits.
         # ---------------------------------------------
 
         background_tasks.add_task(
             self._send_purchase_order_email,
+            vendor,
+            serialized_po,
+        )
+
+        return serialized_po
+
+    def get_issued_for_service(
+        self,
+        job_id: str,
+        category: str,
+        service_name: str,
+    ):
+        """
+        Check whether an Issued PO exists for the exact
+        workflow service before the user unchecks it.
+
+        Returns:
+            {
+                "has_issued_po": False
+            }
+
+        or:
+
+            {
+                "has_issued_po": True,
+                "purchase_order": {...}
+            }
+        """
+
+        purchase_order = (
+            purchase_order_repository.get_issued_by_service(
+                job_id=job_id,
+                category=category,
+                service_name=service_name,
+            )
+        )
+
+        if not purchase_order:
+            return {
+                "has_issued_po": False,
+                "purchase_order": None,
+            }
+
+        return {
+            "has_issued_po": True,
+            "purchase_order": self._serialize(
+                purchase_order
+            ),
+        }
+
+    def cancel_issued_service_po(
+        self,
+        job_id: str,
+        category: str,
+        service_name: str,
+        reason: str,
+        background_tasks: BackgroundTasks,
+    ):
+        """
+        Cancel an Issued PO when its workflow service
+        is removed/unselected.
+
+        The PO is preserved for audit/history.
+
+        This method does NOT modify the workflow itself.
+        Workflow removal will happen only after this
+        cancellation succeeds.
+        """
+
+        purchase_order = (
+            purchase_order_repository.get_issued_by_service(
+                job_id=job_id,
+                category=category,
+                service_name=service_name,
+            )
+        )
+
+        if not purchase_order:
+            raise ValueError(
+                "No issued Purchase Order found "
+                "for this job and service."
+            )
+
+        vendor = vendor_repository.find_by_id(
+            purchase_order["vendor_id"]
+        )
+
+        if not vendor:
+            raise ValueError(
+                "Vendor assigned to this Purchase Order "
+                "was not found."
+            )
+
+        with client.start_session() as session:
+
+            with session.start_transaction():
+
+                cancelled = (
+                    purchase_order_repository.cancel_issued_po(
+                        po_id=purchase_order["_id"],
+                        reason=reason,
+                        session=session,
+                    )
+                )
+
+                if not cancelled:
+                    raise ValueError(
+                        "Purchase Order is no longer issued "
+                        "or has already been cancelled."
+                    )
+
+        # ---------------------------------------------
+        # TRANSACTION SUCCESSFULLY COMMITTED
+        # ---------------------------------------------
+
+        serialized_po = self._serialize(
+            cancelled
+        )
+
+        # ---------------------------------------------
+        # SEND CANCELLATION EMAIL AFTER COMMIT
+        # ---------------------------------------------
+
+        background_tasks.add_task(
+            self._send_purchase_order_cancellation_email,
             vendor,
             serialized_po,
         )

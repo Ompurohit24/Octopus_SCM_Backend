@@ -1160,4 +1160,410 @@ class EmailService:
                 message.as_string(),
             )
 
+    @staticmethod
+    def send_purchase_order_cancellation_email(
+        vendor: dict,
+        purchase_order: dict,
+    ):
+        # -------------------------------------------------
+        # NORMALIZE VENDOR EMAILS
+        #
+        # Supports:
+        #
+        # email: "vendor@example.com"
+        #
+        # and:
+        #
+        # email: [
+        #     "vendor@example.com",
+        #     "accounts@example.com",
+        # ]
+        # -------------------------------------------------
+
+        raw_emails = vendor.get(
+            "email",
+            [],
+        )
+
+        if isinstance(
+            raw_emails,
+            str,
+        ):
+            emails = [
+                raw_emails
+            ]
+
+        elif isinstance(
+            raw_emails,
+            list,
+        ):
+            emails = raw_emails
+
+        else:
+            emails = []
+
+        recipients = []
+        seen = set()
+
+        for item in emails:
+
+            email = str(
+                item
+            ).strip()
+
+            if not email:
+                continue
+
+            normalized = (
+                email.lower()
+            )
+
+            if normalized in seen:
+                continue
+
+            seen.add(
+                normalized
+            )
+
+            recipients.append(
+                email
+            )
+
+        # Do not attempt SMTP when the vendor
+        # has no registered email address.
+
+        if not recipients:
+            return
+
+        # -------------------------------------------------
+        # SAFE DISPLAY VALUES
+        # -------------------------------------------------
+
+        po_number = escape(
+            str(
+                purchase_order.get(
+                    "po_number",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        job_number = escape(
+            str(
+                purchase_order.get(
+                    "job_number",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        bl_no = escape(
+            str(
+                purchase_order.get(
+                    "bl_no",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        be_no = escape(
+            str(
+                purchase_order.get(
+                    "be_no",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        consignee_name = escape(
+            str(
+                purchase_order.get(
+                    "consignee_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        category = escape(
+            str(
+                purchase_order.get(
+                    "category",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        service_name = escape(
+            str(
+                purchase_order.get(
+                    "service_name",
+                    "",
+                )
+                or ""
+            )
+        )
+
+        cancellation_reason = escape(
+            str(
+                purchase_order.get(
+                    "cancellation_reason",
+                    "Service removed from Import Workflow",
+                )
+                or "Service removed from Import Workflow"
+            )
+        )
+
+        vendor_name = escape(
+            str(
+                vendor.get(
+                    "vendor_name",
+                    purchase_order.get(
+                        "vendor_name",
+                        "",
+                    ),
+                )
+                or ""
+            )
+        )
+
+        vendor_code = escape(
+            str(
+                vendor.get(
+                    "vendor_code",
+                    purchase_order.get(
+                        "vendor_code",
+                        "",
+                    ),
+                )
+                or ""
+            )
+        )
+
+        # -------------------------------------------------
+        # EMAIL MESSAGE
+        # -------------------------------------------------
+
+        message = MIMEMultipart(
+            "alternative"
+        )
+
+        message["Subject"] = (
+            f"Purchase Order Cancelled - "
+            f"{po_number} - "
+            f"{service_name}"
+        )
+
+        message["From"] = (
+            settings.SMTP_FROM
+        )
+
+        message["To"] = ", ".join(
+            recipients
+        )
+
+        html = f"""
+        <html>
+            <body
+                style="
+                    font-family:Arial,sans-serif;
+                    color:#222;
+                "
+            >
+
+                <h2>
+                    Purchase Order Cancellation
+                </h2>
+
+                <p>
+                    Dear <b>{vendor_name}</b>,
+                </p>
+
+                <p>
+                    This is to inform you that the service
+                    assigned under Purchase Order
+                    <b>{po_number}</b> has been
+                    <b>cancelled</b>.
+                </p>
+
+                <p>
+                    Please discontinue any further work
+                    related to the service mentioned below.
+                </p>
+
+                <table
+                    cellpadding="6"
+                    cellspacing="0"
+                >
+
+                    <tr>
+                        <td>
+                            <b>PO Number</b>
+                        </td>
+
+                        <td>
+                            {po_number or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Job Number</b>
+                        </td>
+
+                        <td>
+                            {job_number or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>BL No</b>
+                        </td>
+
+                        <td>
+                            {bl_no or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>BE No</b>
+                        </td>
+
+                        <td>
+                            {be_no or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Consignee</b>
+                        </td>
+
+                        <td>
+                            {consignee_name or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Category</b>
+                        </td>
+
+                        <td>
+                            {category or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Service</b>
+                        </td>
+
+                        <td>
+                            <b>{service_name or "-"}</b>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Vendor Code</b>
+                        </td>
+
+                        <td>
+                            {vendor_code or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Status</b>
+                        </td>
+
+                        <td>
+                            <b>Cancelled</b>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Cancellation Reason</b>
+                        </td>
+
+                        <td>
+                            {cancellation_reason}
+                        </td>
+                    </tr>
+
+                </table>
+
+                <br>
+
+                <p>
+                    Kindly acknowledge this cancellation
+                    and treat the previously issued
+                    Purchase Order as cancelled.
+                </p>
+
+                <p>
+                    No further action is required against
+                    this Purchase Order unless separately
+                    instructed by Octopus SCM.
+                </p>
+
+                <p>
+                    Regards,<br>
+                    Octopus SCM Team
+                </p>
+
+            </body>
+        </html>
+        """
+
+        message.attach(
+            MIMEText(
+                html,
+                "html",
+            )
+        )
+
+        # -------------------------------------------------
+        # SMTP
+        # -------------------------------------------------
+
+        with smtplib.SMTP(
+            settings.SMTP_HOST,
+            int(
+                settings.SMTP_PORT
+            ),
+            timeout=30,
+        ) as server:
+
+            server.ehlo()
+
+            server.starttls()
+
+            server.ehlo()
+
+            server.login(
+                settings.SMTP_USERNAME,
+                settings.SMTP_PASSWORD,
+            )
+
+            # Send cancellation notification to
+            # every registered vendor email.
+
+            server.sendmail(
+                settings.SMTP_FROM,
+                recipients,
+                message.as_string(),
+            )
+
+
 email_service = EmailService()
