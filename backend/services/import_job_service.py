@@ -41,6 +41,7 @@ class ImportJobService:
             raise ValueError("Forwarder not found")
 
         document = job.model_dump()
+
         document["forwarder_name"] = customer["customer_name"]
 
         document.update(
@@ -55,12 +56,16 @@ class ImportJobService:
             }
         )
 
-        result = import_job_repository.create(document)
+        # Create Import Job
+        created = import_job_repository.create(document)
 
-        document["_id"] = result.inserted_id
+        # BaseRepository.create() returns the created document,
+        # not PyMongo InsertOneResult.
+        job_id = str(created["_id"])
 
+        # Automatically create Import Workflow
         workflow = {
-            "job_id": str(result.inserted_id),
+            "job_id": job_id,
             "job_number": job_number,
             "party_name": customer["customer_name"],
             "bl_no": job.bl_no,
@@ -95,14 +100,20 @@ class ImportJobService:
         }
 
         import_workflow_repository.create(workflow)
+
+        # Send Import Job created email
         try:
             email_service.send_import_job_created_email(
                 customer["email"],
-                document,
+                created,
             )
         except Exception as e:
-            print(e)
-        return serialize(document)
+            print(
+                "Import job created email failed:",
+                e,
+            )
+
+        return serialize(created)
 
     @staticmethod
     def get_all(
