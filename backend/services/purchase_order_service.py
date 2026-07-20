@@ -94,7 +94,7 @@ class PurchaseOrderService:
         # VALIDATE VENDOR BEFORE CREATING PO
         # ---------------------------------------------
 
-        vendor = vendor_repository.get(
+        vendor = vendor_repository.find_by_id(
             data["vendor_id"]
         )
 
