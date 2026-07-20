@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-
+from fastapi import APIRouter, Depends, HTTPException
 from backend.models.import_workflow import (
     ImportWorkflowCreate,
     ImportWorkflowUpdate,
@@ -52,11 +52,18 @@ def update_import_workflow(
     workflow: ImportWorkflowUpdate,
     user=Depends(get_current_user),
 ):
-    return ImportWorkflowService.update(
-        job_id=job_id,
-        workflow=workflow,
-        user_id=user["sub"],
-    )
+    try:
+        return ImportWorkflowService.update(
+            job_id=job_id,
+            workflow=workflow,
+            user_id=user["sub"],
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e),
+        )
 
 
 @router.delete("/{job_id}")

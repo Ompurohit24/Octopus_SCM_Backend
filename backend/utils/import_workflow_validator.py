@@ -105,7 +105,9 @@ class ImportWorkflowValidator:
             services = data.get("other_gov_agency_type") or {}
 
             if not isinstance(services, dict) or not services:
-                raise ValueError("Select Type of Other Gov Agency.")
+                raise ValueError(
+                    "Kindly click or check at least one service."
+                )
 
             for service_name, service in services.items():
 
@@ -235,9 +237,9 @@ class ImportWorkflowValidator:
 
         # ---------------- CO Deface ----------------
 
-        if data.get("co_deface_required") == "Yes":
-            if data.get("co_deface") != "Done":
-                raise ValueError("Complete CO Deface.")
+        # if data.get("co_deface_required") == "Yes":
+        #     if data.get("co_deface") != "Done":
+        #         raise ValueError("Complete CO Deface.")
 
         # ---------------- DO ----------------
 
