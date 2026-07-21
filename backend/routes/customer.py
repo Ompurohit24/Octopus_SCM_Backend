@@ -38,6 +38,7 @@ from backend.utils.dependencies import (
 )
 
 
+
 router = APIRouter(
     prefix="/customers",
     tags=["Customers"],

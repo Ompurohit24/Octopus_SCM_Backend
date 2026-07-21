@@ -35,8 +35,9 @@ from backend.utils.dependencies import (
 )
 from fastapi import Depends
 
-from models.pending_registration import ResendRegistrationOTPRequest
-
+from backend.models.pending_registration import (
+    ResendRegistrationOTPRequest,
+)
 router = APIRouter(
     prefix="/vendors",
     tags=["Vendors"],
