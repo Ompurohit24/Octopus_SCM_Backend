@@ -2,6 +2,8 @@ from datetime import datetime
 
 from backend.config.security import (
     create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
     hash_password,
     verify_password,
 )
@@ -44,26 +46,79 @@ class AuthService:
     @staticmethod
     def login(data: UserLogin):
 
-        user = AuthRepository.get_by_email(data.email)
+        user = AuthRepository.get_by_email(
+            data.email
+        )
 
         if not user:
-            raise ValueError("Invalid credentials")
+            raise ValueError(
+                "Invalid credentials"
+            )
 
         if not verify_password(
-            data.password,
-            user["hashed_password"],
+                data.password,
+                user["hashed_password"],
         ):
-            raise ValueError("Invalid credentials")
+            raise ValueError(
+                "Invalid credentials"
+            )
 
-        token = create_access_token(
-            {
-                "sub": str(user["_id"]),
-                "email": user["email"],
-                "role": user["role"],
-            }
+        token_data = {
+            "sub": str(user["_id"]),
+            "email": user["email"],
+            "role": user["role"],
+        }
+
+        access_token = create_access_token(
+            token_data
+        )
+
+        refresh_token = create_refresh_token(
+            token_data
         )
 
         return {
-            "access_token": token,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
+        }
+
+    @staticmethod
+    def refresh(
+            refresh_token: str,
+    ):
+
+        payload = verify_refresh_token(
+            refresh_token
+        )
+
+        if not payload:
+            raise ValueError(
+                "Invalid or expired refresh token"
+            )
+
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        role = payload.get("role")
+
+        if not user_id:
+            raise ValueError(
+                "Invalid refresh token"
+            )
+
+        new_access_token = (
+            create_access_token(
+                {
+                    "sub": user_id,
+                    "email": email,
+                    "role": role,
+                }
+            )
+        )
+
+        return {
+            "access_token":
+                new_access_token,
+            "token_type":
+                "bearer",
         }
