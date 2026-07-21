@@ -1753,7 +1753,8 @@ class EmailService:
         )
 
         message["Subject"] = (
-            f"Invoice Required - "
+            f"Follow-Up Required - "
+            f"{service_name} - "
             f"{po_number} - "
             f"{job_number}"
         )
@@ -1783,13 +1784,14 @@ class EmailService:
         <html>
             <body
                 style="
-                    font-family:Arial,sans-serif;
-                    color:#222;
+                    font-family: Arial, sans-serif;
+                    color: #222;
+                    line-height: 1.6;
                 "
             >
 
                 <h2>
-                    Invoice Submission Reminder
+                    Follow-Up Required
                 </h2>
 
                 <p>
@@ -1797,15 +1799,13 @@ class EmailService:
                 </p>
 
                 <p>
-                    This is a reminder to submit your invoice
-                    against Purchase Order
-                    <b>{po_number}</b>.
+                    Greetings from Octopus SCM.
                 </p>
 
                 <p>
-                    Our records indicate that the vendor invoice
-                    for the following Purchase Order has not yet
-                    been received.
+                    This is a follow-up regarding the pending
+                    <b>{service_name or "service"}</b> operation
+                    against the below-mentioned shipment.
                 </p>
 
                 <table
@@ -1815,21 +1815,21 @@ class EmailService:
 
                     <tr>
                         <td>
-                            <b>PO Number</b>
-                        </td>
-
-                        <td>
-                            {po_number or "-"}
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td>
                             <b>Job Number</b>
                         </td>
 
                         <td>
                             {job_number or "-"}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>PO Number</b>
+                        </td>
+
+                        <td>
+                            {po_number or "-"}
                         </td>
                     </tr>
 
@@ -1879,17 +1879,9 @@ class EmailService:
                         </td>
 
                         <td>
-                            <b>{service_name or "-"}</b>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td>
-                            <b>Vendor Code</b>
-                        </td>
-
-                        <td>
-                            {vendor_code or "-"}
+                            <b>
+                                {service_name or "-"}
+                            </b>
                         </td>
                     </tr>
 
@@ -1898,20 +1890,31 @@ class EmailService:
                 <br>
 
                 <p>
-                    Kindly send the invoice at the earliest
-                    so that it can be recorded and processed
-                    in Octopus SCM.
+                    Kindly carry out the required operation
+                    at the earliest and intimate us once it
+                    is completed.
                 </p>
 
                 <p>
-                    This reminder will automatically stop once
-                    the invoice is received and uploaded against
-                    this Purchase Order.
+                    We request you to prioritize the same
+                    and keep us updated on the progress.
+                </p>
+
+                <p>
+                    In case the operation has already been
+                    completed, kindly share the completion
+                    details along with the relevant supporting
+                    documents, if applicable, for our records.
+                </p>
+
+                <p>
+                    Your prompt action in this matter will
+                    be highly appreciated.
                 </p>
 
                 <p>
                     Regards,<br>
-                    Octopus SCM Team
+                    <b>Octopus SCM Team</b>
                 </p>
 
             </body>
@@ -1925,43 +1928,212 @@ class EmailService:
             )
         )
 
-        # -------------------------------------------------
-        # SMTP
-        # -------------------------------------------------
+    @staticmethod
+    def send_registration_otp_email(
+            recipient_email: str,
+            otp: str,
+            entity_type: str,
+            entity_name: str,
+            email_role: str,
+    ) -> bool:
+        """
+        Send OTP for Customer/Vendor profile verification.
 
-        with smtplib.SMTP(
-            settings.SMTP_HOST,
-            int(
-                settings.SMTP_PORT
-            ),
-            timeout=30,
-        ) as server:
+        Customer:
+            Each entered email receives its own unique OTP.
 
-            server.ehlo()
+        Vendor:
+            The single Vendor email receives one OTP.
 
-            server.starttls()
+        OTP validity:
+            24 hours.
+        """
 
-            server.ehlo()
+        recipient_email = str(
+            recipient_email or ""
+        ).strip()
 
-            server.login(
-                settings.SMTP_USERNAME,
-                settings.SMTP_PASSWORD,
+        if not recipient_email:
+            return False
+
+        entity_type_display = (
+            "Customer"
+            if entity_type.lower()
+               == "customer"
+            else "Vendor"
+        )
+
+        message = MIMEMultipart(
+            "alternative"
+        )
+
+        message["Subject"] = (
+            f"{entity_type_display} Profile "
+            f"Verification OTP - Octopus SCM"
+        )
+
+        message["From"] = (
+            settings.SMTP_FROM
+        )
+
+        message["To"] = (
+            recipient_email
+        )
+
+        html = f"""
+        <html>
+            <body
+                style="
+                    font-family: Arial, sans-serif;
+                    color: #222;
+                    line-height: 1.6;
+                "
+            >
+
+                <h2>
+                    Email Verification
+                </h2>
+
+                <p>
+                    Dear Sir/Madam,
+                </p>
+
+                <p>
+                    An email verification request has
+                    been initiated for the following
+                    {entity_type_display.lower()} profile
+                    in Octopus SCM.
+                </p>
+
+                <table
+                    cellpadding="6"
+                    cellspacing="0"
+                >
+
+                    <tr>
+                        <td>
+                            <b>
+                                {entity_type_display}
+                            </b>
+                        </td>
+
+                        <td>
+                            {escape(str(entity_name))}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <b>Email Type</b>
+                        </td>
+
+                        <td>
+                            {escape(str(email_role))}
+                        </td>
+                    </tr>
+
+                </table>
+
+                <br>
+
+                <p>
+                    Please use the following One-Time
+                    Password (OTP) to verify this email
+                    address:
+                </p>
+
+                <div
+                    style="
+                        font-size: 28px;
+                        font-weight: bold;
+                        letter-spacing: 8px;
+                        padding: 16px;
+                        margin: 16px 0;
+                        border: 1px solid #ddd;
+                        display: inline-block;
+                    "
+                >
+                    {escape(str(otp))}
+                </div>
+
+                <p>
+                    This OTP is valid for
+                    <b>24 hours</b>.
+                </p>
+
+                <p>
+                    The {entity_type_display.lower()}
+                    profile will be created only after
+                    all required email addresses have
+                    been successfully verified.
+                </p>
+
+                <p>
+                    If you did not expect this
+                    verification request, please contact
+                    the concerned Octopus SCM team.
+                </p>
+
+                <p>
+                    Regards,<br>
+                    <b>Octopus SCM Team</b>
+                </p>
+
+            </body>
+        </html>
+        """
+
+        message.attach(
+            MIMEText(
+                html,
+                "html",
             )
+        )
 
-            all_recipients = list(
-                dict.fromkeys(
-                    recipients
-                    + cc_recipients
+        try:
+
+            with smtplib.SMTP(
+                    settings.SMTP_HOST,
+                    int(
+                        settings.SMTP_PORT
+                    ),
+                    timeout=30,
+            ) as server:
+
+                server.ehlo()
+
+                server.starttls()
+
+                server.ehlo()
+
+                server.login(
+                    settings.SMTP_USERNAME,
+                    settings.SMTP_PASSWORD,
                 )
+
+                server.sendmail(
+                    settings.SMTP_FROM,
+                    [
+                        recipient_email
+                    ],
+                    message.as_string(),
+                )
+
+            return True
+
+        except Exception as exc:
+
+            print(
+                "[Registration OTP Email Error] "
+                f"{entity_type_display} | "
+                f"{entity_name} | "
+                f"{email_role} | "
+                f"{recipient_email}: "
+                f"{repr(exc)}",
+                flush=True,
             )
 
-            server.sendmail(
-                settings.SMTP_FROM,
-                all_recipients,
-                message.as_string(),
-            )
-        return True
-
+            return False
 
 
 

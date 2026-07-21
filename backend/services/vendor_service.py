@@ -15,6 +15,12 @@ from backend.utils.serializer import serialize, serialize_list
 from backend.repositories.purchase_order_repository import (
     purchase_order_repository,
 )
+from datetime import datetime
+
+from backend.repositories.pending_registration_repository import (
+    pending_registration_repository,
+)
+
 
 KYC_ROOT = Path("KYC") / "Vendor"
 KYC_ROOT.mkdir(
@@ -23,6 +29,283 @@ KYC_ROOT.mkdir(
 )
 
 class VendorService:
+
+    def create_from_verified_registration(
+            self,
+            registration: dict,
+            user_id: str,
+            background_tasks: BackgroundTasks,
+    ):
+        # ---------------------------------------------
+        # SECURITY CHECKS
+        # ---------------------------------------------
+
+        if (
+                registration.get(
+                    "entity_type"
+                )
+                != "vendor"
+        ):
+            raise ValueError(
+                "Invalid Vendor registration."
+            )
+
+        if (
+                registration.get(
+                    "status"
+                )
+                != "pending"
+        ):
+            raise ValueError(
+                "Vendor registration is no longer "
+                "pending."
+            )
+
+        verifications = (
+            registration.get(
+                "email_verifications",
+                {},
+            )
+        )
+
+        vendor_verification = (
+            verifications.get(
+                "vendor_email"
+            )
+        )
+
+        if not vendor_verification:
+            raise ValueError(
+                "Vendor email verification "
+                "is missing."
+            )
+
+        if not vendor_verification.get(
+                "verified",
+                False,
+        ):
+            raise ValueError(
+                "Vendor email must be verified."
+            )
+
+        # ---------------------------------------------
+        # REBUILD + VALIDATE VENDOR DATA
+        # ---------------------------------------------
+
+        form_data = dict(
+            registration.get(
+                "form_data",
+                {},
+            )
+        )
+
+        if not form_data:
+            raise ValueError(
+                "Pending Vendor data is missing."
+            )
+
+        # VendorCreate currently expects vendor_code,
+        # but pending form_data intentionally does not
+        # contain it.
+
+        form_data[
+            "vendor_code"
+        ] = ""
+
+        vendor = VendorCreate(
+            **form_data
+        )
+
+        document = (
+            vendor.model_dump()
+        )
+
+        # ---------------------------------------------
+        # GENERATE FINAL VENDOR CODE
+        # ---------------------------------------------
+
+        number = (
+            counter_repository.next(
+                "vendor"
+            )
+        )
+
+        vendor_code = (
+            f"VEN-{number:04d}"
+        )
+
+        document[
+            "vendor_code"
+        ] = vendor_code
+
+        # ---------------------------------------------
+        # MOVE PENDING KYC TO FINAL VENDOR FOLDER
+        #
+        # Existing Vendor structure:
+        # KYC/Vendor/<Vendor Name>/
+        # ---------------------------------------------
+
+        temporary_documents = (
+            registration.get(
+                "temporary_documents",
+                {},
+            )
+        )
+
+        final_folder = (
+                KYC_ROOT
+                / vendor.vendor_name
+        )
+
+        final_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        gst_final_path = None
+        pan_final_path = None
+
+        gst_temp = (
+            temporary_documents.get(
+                "gst_document"
+            )
+        )
+
+        if gst_temp:
+            source = Path(
+                gst_temp
+            )
+
+            if source.exists():
+                destination = (
+                        final_folder
+                        / f"GST{source.suffix}"
+                )
+
+                shutil.move(
+                    str(source),
+                    str(destination),
+                )
+
+                gst_final_path = str(
+                    destination
+                )
+
+        pan_temp = (
+            temporary_documents.get(
+                "pan_document"
+            )
+        )
+
+        if pan_temp:
+            source = Path(
+                pan_temp
+            )
+
+            if source.exists():
+                destination = (
+                        final_folder
+                        / f"PAN{source.suffix}"
+                )
+
+                shutil.move(
+                    str(source),
+                    str(destination),
+                )
+
+                pan_final_path = str(
+                    destination
+                )
+
+        now = datetime.utcnow()
+
+        document.update(
+            {
+                "is_active":
+                    True,
+
+                "is_deleted":
+                    False,
+
+                "created_by":
+                    user_id,
+
+                "updated_by":
+                    user_id,
+
+                "created_at":
+                    now,
+
+                "updated_at":
+                    now,
+
+                "gst_document":
+                    gst_final_path,
+
+                "pan_document":
+                    pan_final_path,
+            }
+        )
+
+        # ---------------------------------------------
+        # CREATE REAL VENDOR
+        # ---------------------------------------------
+
+        created_vendor = (
+            vendor_repository.create(
+                document
+            )
+        )
+
+        if not created_vendor:
+            raise ValueError(
+                "Unable to create Vendor."
+            )
+
+        vendor_id = str(
+            created_vendor.get(
+                "_id"
+            )
+        )
+
+        # ---------------------------------------------
+        # COMPLETE PENDING REGISTRATION
+        # ---------------------------------------------
+
+        completed = (
+            pending_registration_repository
+            .mark_completed(
+                registration_id=
+                registration[
+                    "registration_id"
+                ],
+
+                entity_id=
+                vendor_id,
+            )
+        )
+
+        if not completed.modified_count:
+            raise ValueError(
+                "Vendor was created but registration "
+                "completion could not be recorded."
+            )
+
+        # ---------------------------------------------
+        # NORMAL VENDOR CREATED EMAIL
+        # ---------------------------------------------
+
+        background_tasks.add_task(
+            email_service
+            .send_vendor_created_email,
+
+            created_vendor,
+        )
+
+        return serialize(
+            created_vendor
+        )
+
 
     def get_next_code(self):
         counter = counter_repository.current("vendor")
@@ -150,73 +433,6 @@ class VendorService:
         # NORMALIZE EMAILS
         # -------------------------------------------------
 
-        emails = vendor.email or []
-
-        # Extra backward compatibility in case this service
-        # is ever called without Pydantic normalization.
-        if isinstance(emails, str):
-            emails = [emails]
-
-        # -------------------------------------------------
-        # CHECK NON-EMAIL DUPLICATES
-        # -------------------------------------------------
-
-        duplicate = vendor_repository.find_duplicate(
-            vendor_name=vendor.vendor_name,
-            gstin=vendor.gstin,
-            pan=vendor.pan,
-            email=None,
-            phone=vendor.phone,
-        )
-
-        if duplicate:
-            messages = {
-                "vendor_name":
-                    "Vendor Name already exists.",
-                "gstin":
-                    "GSTIN already exists.",
-                "pan":
-                    "PAN already exists.",
-                "phone":
-                    "Mobile Number already exists.",
-            }
-
-            raise ValueError(
-                messages.get(
-                    duplicate,
-                    "Vendor already exists.",
-                )
-            )
-
-        # -------------------------------------------------
-        # CHECK EVERY EMAIL
-        #
-        # Works against:
-        #
-        # Old MongoDB:
-        # email: "vendor@example.com"
-        #
-        # New MongoDB:
-        # email: [
-        #     "vendor@example.com",
-        #     "accounts@example.com"
-        # ]
-        # -------------------------------------------------
-
-        for email in emails:
-            email_value = str(email).strip()
-
-            if not email_value:
-                continue
-
-            duplicate = vendor_repository.find_duplicate(
-                email=email_value,
-            )
-
-            if duplicate == "email":
-                raise ValueError(
-                    f"Email {email_value} already exists."
-                )
 
         # -------------------------------------------------
         # GENERATE VENDOR CODE
@@ -296,62 +512,6 @@ class VendorService:
             **update_data,
         }
 
-        # -------------------------------------------------
-        # CHECK NON-EMAIL DUPLICATES
-        # -------------------------------------------------
-
-        duplicate = vendor_repository.find_duplicate(
-            vendor_name=merged.get("vendor_name"),
-            gstin=merged.get("gstin"),
-            pan=merged.get("pan"),
-            email=None,
-            phone=merged.get("phone"),
-            exclude_id=vendor_id,
-        )
-
-        if duplicate:
-            messages = {
-                "vendor_name":
-                    "Vendor Name already exists.",
-                "gstin":
-                    "GSTIN already exists.",
-                "pan":
-                    "PAN already exists.",
-                "phone":
-                    "Mobile Number already exists.",
-            }
-
-            raise ValueError(
-                messages.get(
-                    duplicate,
-                    "Vendor already exists.",
-                )
-            )
-
-        # -------------------------------------------------
-        # CHECK EVERY EMAIL ON UPDATE
-        # -------------------------------------------------
-
-        emails = merged.get("email") or []
-
-        if isinstance(emails, str):
-            emails = [emails]
-
-        for email in emails:
-            email_value = str(email).strip()
-
-            if not email_value:
-                continue
-
-            duplicate = vendor_repository.find_duplicate(
-                email=email_value,
-                exclude_id=vendor_id,
-            )
-
-            if duplicate == "email":
-                raise ValueError(
-                    f"Email {email_value} already exists."
-                )
 
         # -------------------------------------------------
         # UPDATE

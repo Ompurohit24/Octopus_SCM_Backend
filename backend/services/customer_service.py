@@ -14,12 +14,288 @@ from backend.utils.serializer import serialize, serialize_list
 from backend.repositories.import_job_repository import (
     import_job_repository,
 )
+from pathlib import Path
+import shutil
 
+from datetime import datetime
+
+from backend.repositories.pending_registration_repository import (
+    pending_registration_repository,
+)
 KYC_ROOT = Path("KYC")
 KYC_ROOT.mkdir(exist_ok=True)
 
 
 class CustomerService:
+
+    @staticmethod
+    def create_from_verified_registration(
+            registration: dict,
+            user_id: str,
+            background_tasks: BackgroundTasks,
+    ):
+        # -------------------------------------------------
+        # SECURITY CHECKS
+        # -------------------------------------------------
+
+        if (
+                registration.get("entity_type")
+                != "customer"
+        ):
+            raise ValueError(
+                "Invalid Customer registration."
+            )
+
+        if (
+                registration.get("status")
+                != "pending"
+        ):
+            raise ValueError(
+                "Customer registration is no longer pending."
+            )
+
+        verifications = (
+            registration.get(
+                "email_verifications",
+                {},
+            )
+        )
+
+        if not verifications:
+            raise ValueError(
+                "Customer email verification is missing."
+            )
+
+        if not all(
+                item.get(
+                    "verified",
+                    False,
+                )
+                for item
+                in verifications.values()
+        ):
+            raise ValueError(
+                "All Customer emails must be verified."
+            )
+
+        # -------------------------------------------------
+        # PREPARE CUSTOMER DATA
+        # -------------------------------------------------
+
+        form_data = dict(
+            registration.get(
+                "form_data",
+                {},
+            )
+        )
+
+        if not form_data:
+            raise ValueError(
+                "Pending Customer data is missing."
+            )
+
+        # Revalidate pending data before DB insertion.
+
+        customer = CustomerCreate(
+            **form_data
+        )
+
+        document = (
+            customer.model_dump()
+        )
+
+        # -------------------------------------------------
+        # GENERATE FINAL CUSTOMER CODE
+        #
+        # Code is generated only after successful OTP.
+        # -------------------------------------------------
+
+        code = (
+            CustomerService
+            .generate_customer_code()
+        )
+
+        document[
+            "customer_code"
+        ] = code
+
+        # -------------------------------------------------
+        # MOVE KYC DOCUMENTS
+        #
+        # Pending:
+        # KYC/Pending/Customer/<registration_id>/GST.pdf
+        #
+        # Final:
+        # KYC/<Customer Name>/GST.pdf
+        #
+        # Keep the same final Customer KYC structure already
+        # used by the existing application.
+        # -------------------------------------------------
+
+        temporary_documents = (
+            registration.get(
+                "temporary_documents",
+                {},
+            )
+        )
+
+        final_folder = (
+                Path("KYC")
+                / customer.customer_name
+        )
+
+        final_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        gst_final_path = None
+        pan_final_path = None
+
+        gst_temp = (
+            temporary_documents.get(
+                "gst_document"
+            )
+        )
+
+        if gst_temp:
+            source = Path(
+                gst_temp
+            )
+
+            if source.exists():
+                destination = (
+                        final_folder
+                        / f"GST{source.suffix}"
+                )
+
+                shutil.move(
+                    str(source),
+                    str(destination),
+                )
+
+                gst_final_path = str(
+                    destination
+                )
+
+        pan_temp = (
+            temporary_documents.get(
+                "pan_document"
+            )
+        )
+
+        if pan_temp:
+            source = Path(
+                pan_temp
+            )
+
+            if source.exists():
+                destination = (
+                        final_folder
+                        / f"PAN{source.suffix}"
+                )
+
+                shutil.move(
+                    str(source),
+                    str(destination),
+                )
+
+                pan_final_path = str(
+                    destination
+                )
+
+        now = datetime.utcnow()
+
+        document.update(
+            {
+                "is_active":
+                    True,
+
+                "is_deleted":
+                    False,
+
+                "created_by":
+                    user_id,
+
+                "updated_by":
+                    user_id,
+
+                "created_at":
+                    now,
+
+                "updated_at":
+                    now,
+
+                "gst_document":
+                    gst_final_path,
+
+                "pan_document":
+                    pan_final_path,
+            }
+        )
+
+        # -------------------------------------------------
+        # CREATE CUSTOMER
+        # -------------------------------------------------
+
+        created = (
+            customer_repository.create(
+                document
+            )
+        )
+
+        if not created:
+            raise ValueError(
+                "Unable to create Customer."
+            )
+
+        # -------------------------------------------------
+        # MARK PENDING REGISTRATION COMPLETED
+        # -------------------------------------------------
+
+        customer_id = str(
+            created.get(
+                "_id"
+            )
+        )
+
+        result = (
+            pending_registration_repository
+            .mark_completed(
+                registration_id=
+                registration[
+                    "registration_id"
+                ],
+
+                entity_id=
+                customer_id,
+            )
+        )
+
+        if not result.modified_count:
+            # Customer exists at this point, so do not
+            # attempt another Customer insertion.
+            raise ValueError(
+                "Customer was created but registration "
+                "completion could not be recorded."
+            )
+
+        # -------------------------------------------------
+        # CUSTOMER CREATED EMAIL
+        #
+        # Runs only after OTP verification + creation.
+        # -------------------------------------------------
+
+        background_tasks.add_task(
+            email_service
+            .send_customer_created_email,
+
+            created,
+        )
+
+        return serialize(
+            created
+        )
 
     @staticmethod
     def generate_customer_code(session=None):
@@ -68,141 +344,79 @@ class CustomerService:
 
     @staticmethod
     def create(
-        customer: CustomerCreate,
-        user_id: str,
-        background_tasks: BackgroundTasks,
-        gst_document=None,
-        pan_document=None,
+            customer: CustomerCreate,
+            user_id: str,
+            background_tasks: BackgroundTasks,
+            gst_document=None,
+            pan_document=None,
     ):
         try:
             with client.start_session() as session:
                 with session.start_transaction():
-                    code = CustomerService.generate_customer_code(
-                        session=session,
+                    # -----------------------------------------
+                    # GENERATE UNIQUE CUSTOMER CODE
+                    # -----------------------------------------
+
+                    code = (
+                        CustomerService
+                        .generate_customer_code(
+                            session=session,
+                        )
                     )
 
-                    document = customer.model_dump()
+                    document = (
+                        customer.model_dump()
+                    )
 
-                    # -------------------------------------------------
-                    # CUSTOMER NAME DUPLICATE CHECK
-                    # -------------------------------------------------
-
-                    customer_name = document.get("customer_name")
-
-                    if customer_name:
-                        existing = customer_repository.find_one(
-                            {
-                                "customer_name": {
-                                    "$regex": f"^{customer_name.strip()}$",
-                                    "$options": "i",
-                                },
-                                "is_deleted": False,
-                            }
-                        )
-
-                        if existing:
-                            raise ValueError(
-                                "Customer Name already exists."
-                            )
-
-                    # -------------------------------------------------
-                    # MULTIPLE EMAIL DUPLICATE CHECK
-                    #
-                    # Works with:
-                    # Old records:
-                    #   email: "abc@example.com"
-                    #
-                    # New records:
-                    #   email: [
-                    #       "abc@example.com",
-                    #       "accounts@example.com"
-                    #   ]
-                    # -------------------------------------------------
-
-                    emails = document.get("email") or []
-
-                    if isinstance(emails, str):
-                        emails = [emails]
-
-                    for email in emails:
-                        email_value = str(email).strip()
-
-                        if not email_value:
-                            continue
-
-                        existing = customer_repository.find_one(
-                            {
-                                "email": {
-                                    "$regex": f"^{email_value}$",
-                                    "$options": "i",
-                                },
-                                "is_deleted": False,
-                            }
-                        )
-
-                        if existing:
-                            raise ValueError(
-                                f"Email {email_value} already exists."
-                            )
-
-                    # -------------------------------------------------
-                    # OTHER DUPLICATE CHECKS
-                    # -------------------------------------------------
-
-                    duplicates = [
-                        ("phone", "Phone Number"),
-                        ("gstin", "GSTIN"),
-                        ("pan", "PAN"),
-                        ("tan", "TAN"),
-                    ]
-
-                    for field, label in duplicates:
-                        value = document.get(field)
-
-                        if not value:
-                            continue
-
-                        existing = customer_repository.find_one(
-                            {
-                                field: value,
-                                "is_deleted": False,
-                            }
-                        )
-
-                        if existing:
-                            raise ValueError(
-                                f"{label} already exists."
-                            )
-
-                    # -------------------------------------------------
+                    # -----------------------------------------
                     # KYC DOCUMENTS
-                    # -------------------------------------------------
+                    # -----------------------------------------
 
                     gst_path, pan_path = (
-                        CustomerService.save_kyc_documents(
+                        CustomerService
+                        .save_kyc_documents(
                             customer.customer_name,
                             gst_document,
                             pan_document,
                         )
                     )
 
+                    # -----------------------------------------
+                    # BUILD CUSTOMER DOCUMENT
+                    # -----------------------------------------
+
                     document.update(
                         {
                             "customer_code": code,
+
                             "is_active": True,
                             "is_deleted": False,
+
                             "created_by": user_id,
                             "updated_by": user_id,
-                            "created_at": datetime.utcnow(),
-                            "updated_at": datetime.utcnow(),
-                            "gst_document": gst_path,
-                            "pan_document": pan_path,
+                            "created_at":
+                            datetime.utcnow(),
+                            "updated_at":
+                                datetime.utcnow(),
+
+                            "gst_document":
+                                gst_path,
+
+                            "pan_document":
+                                pan_path,
                         }
                     )
 
-                    created = customer_repository.create(
-                        document,
-                        session=session,
+                    # -----------------------------------------
+                    # CREATE CUSTOMER
+                    # -----------------------------------------
+
+                    created = (
+                        customer_repository
+                        .create(
+                            document,
+                            session=session,
+                        )
                     )
 
                     if not created:
@@ -213,18 +427,27 @@ class CustomerService:
                     document = created
 
         except DuplicateKeyError as e:
-            raise ValueError(str(e))
+            # customer_code remains permanently unique.
+            raise ValueError(
+                str(e)
+            )
 
         except Exception:
             raise
 
+        # ---------------------------------------------
+        # CUSTOMER CREATED EMAIL
+        # ---------------------------------------------
+
         background_tasks.add_task(
-            email_service.send_customer_created_email,
+            email_service
+            .send_customer_created_email,
             document,
         )
 
-        return serialize(document)
-
+        return serialize(
+            document
+        )
     @staticmethod
     def get_all(
         skip: int = 0,
