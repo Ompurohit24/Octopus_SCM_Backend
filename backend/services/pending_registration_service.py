@@ -3,11 +3,7 @@ import hmac
 import secrets
 import uuid
 
-from datetime import (
-    datetime,
-    timedelta,
-    timezone,
-)
+from datetime import datetime, timedelta, timezone
 
 from backend.config.settings import settings
 from backend.repositories.pending_registration_repository import (
@@ -440,10 +436,23 @@ class PendingRegistrationService:
             )
         )
 
+        # MongoDB may return UTC datetimes
+        # without timezone information.
         if (
-            expires_at
-            and
-            expires_at <= now
+                expires_at is not None
+                and
+                expires_at.tzinfo is None
+        ):
+            expires_at = (
+                expires_at.replace(
+                    tzinfo=timezone.utc
+                )
+            )
+
+        if (
+                expires_at is not None
+                and
+                expires_at <= now
         ):
             raise ValueError(
                 "OTP has expired. "
@@ -871,11 +880,17 @@ class PendingRegistrationService:
         #
         # Resending OTP does NOT give another 24 hours.
 
-        otp_expires_at = min(
-            now + timedelta(
+        otp_expires_at = (
+            min(
+                now + timedelta(
+                    minutes=15
+                ),
+                expires_at,
+            )
+            if expires_at is not None
+            else now + timedelta(
                 minutes=15
-            ),
-            expires_at,
+            )
         )
 
         # ---------------------------------------------
