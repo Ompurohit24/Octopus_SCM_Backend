@@ -435,4 +435,22 @@ class PurchaseOrderRepository:
             }
         )
 
+    @staticmethod
+    def get_any_by_vendor_id(
+            vendor_id: str,
+    ):
+        """
+        Returns any Purchase Order linked to the vendor.
+
+        Includes Issued and Cancelled Purchase Orders because
+        PO history must remain linked to the original vendor.
+        """
+
+        return purchase_orders.find_one(
+            {
+                "vendor_id": vendor_id,
+            }
+        )
+
+
 purchase_order_repository = PurchaseOrderRepository()

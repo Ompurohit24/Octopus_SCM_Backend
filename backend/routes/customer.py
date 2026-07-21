@@ -8,6 +8,7 @@ from fastapi import (
     Form,
     HTTPException,
     UploadFile,
+    status,
 )
 
 from backend.models.customer import CustomerCreate, CustomerUpdate
@@ -164,4 +165,13 @@ def update_customer(
 def delete_customer(
     customer_id: str,
 ):
-    return CustomerService.delete(customer_id)
+    try:
+        return CustomerService.delete(
+            customer_id
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )

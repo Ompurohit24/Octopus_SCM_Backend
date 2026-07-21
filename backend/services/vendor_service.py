@@ -5,7 +5,9 @@ from backend.repositories.vendor_repository import vendor_repository
 from backend.repositories.counter_repository import counter_repository
 from backend.services.email_service import email_service
 from backend.utils.serializer import serialize, serialize_list
-
+from backend.repositories.purchase_order_repository import (
+    purchase_order_repository,
+)
 
 class VendorService:
 
@@ -247,14 +249,54 @@ class VendorService:
         return serialize(updated_vendor)
 
     def delete(
-        self,
-        vendor_id: str,
+            self,
+            vendor_id: str,
     ):
-        if not vendor_repository.get(vendor_id):
+        # -------------------------------------------------
+        # FIND VENDOR
+        # -------------------------------------------------
+
+        vendor = vendor_repository.get(
+            vendor_id
+        )
+
+        if not vendor:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Vendor not found.",
             )
+
+        # -------------------------------------------------
+        # PROTECT VENDOR USED BY PURCHASE ORDER
+        #
+        # Includes Issued and Cancelled POs.
+        # Purchase Order history must retain its Vendor.
+        # -------------------------------------------------
+
+        linked_po = (
+            purchase_order_repository
+            .get_any_by_vendor_id(
+                vendor_id=vendor_id,
+            )
+        )
+
+        if linked_po:
+            po_number = linked_po.get(
+                "po_number",
+                "Unknown PO",
+            )
+
+            raise ValueError(
+                f"Cannot delete this Vendor. "
+                f"This Vendor is linked to Purchase Order "
+                f"{po_number}. "
+                f"Vendor cannot be deleted because "
+                f"Purchase Order history must be retained."
+            )
+
+        # -------------------------------------------------
+        # SAFE TO DELETE
+        # -------------------------------------------------
 
         vendor_repository.delete(
             vendor_id

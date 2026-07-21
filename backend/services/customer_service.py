@@ -11,7 +11,9 @@ from backend.repositories.counter_repository import counter_repository
 from backend.repositories.customer_repository import customer_repository
 from backend.services.email_service import email_service
 from backend.utils.serializer import serialize, serialize_list
-
+from backend.repositories.import_job_repository import (
+    import_job_repository,
+)
 
 KYC_ROOT = Path("KYC")
 KYC_ROOT.mkdir(exist_ok=True)
@@ -270,8 +272,59 @@ class CustomerService:
 
     @staticmethod
     def delete(customer_id: str):
-        customer_repository.soft_delete(customer_id)
+
+        # -------------------------------------------------
+        # FIND CUSTOMER
+        # -------------------------------------------------
+
+        customer = customer_repository.find_by_id(
+            customer_id
+        )
+
+        if not customer:
+            raise ValueError(
+                "Customer not found."
+            )
+
+        customer_name = (
+            customer.get("customer_name", "")
+            .strip()
+        )
+
+        # -------------------------------------------------
+        # PROTECT CUSTOMER USED BY IMPORT JOB
+        # -------------------------------------------------
+
+        linked_job = (
+            import_job_repository.find_active_by_customer(
+                customer_name=customer_name,
+            )
+        )
+
+        if linked_job:
+            job_number = linked_job.get(
+                "job_number",
+                "Unknown Job",
+            )
+
+            raise ValueError(
+                f"Cannot delete this Customer. "
+                f"This Customer is linked to Import Job "
+                f"{job_number}. "
+                f"Delete the Import Job first before "
+                f"deleting this Customer."
+            )
+
+        # -------------------------------------------------
+        # SAFE TO DELETE
+        # -------------------------------------------------
+
+        customer_repository.soft_delete(
+            customer_id
+        )
 
         return {
-            "message": "Customer deleted successfully"
+            "message": (
+                "Customer deleted successfully"
+            )
         }

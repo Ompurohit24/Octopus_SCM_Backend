@@ -155,4 +155,22 @@ class ImportJobRepository(BaseRepository):
             session=session,
         )
 
+    def find_active_by_customer(
+            self,
+            customer_name: str,
+    ):
+        return self.collection.find_one(
+            {
+                "is_deleted": False,
+                "$or": [
+                    {
+                        "forwarder": customer_name,
+                    },
+                    {
+                        "forwarder_name": customer_name,
+                    },
+                ],
+            }
+        )
+
 import_job_repository = ImportJobRepository()
