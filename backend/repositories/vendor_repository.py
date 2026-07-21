@@ -31,34 +31,48 @@ class VendorRepository(BaseRepository):
 
     def create_indexes(self):
 
+        # -------------------------------------------------
+        # PERMANENT IDENTIFIER
+        #
+        # VEN-xxxx can NEVER be reused.
+        # -------------------------------------------------
+
         self.collection.create_index(
             [("vendor_code", ASCENDING)],
             unique=True,
         )
 
+        # -------------------------------------------------
+        # REUSABLE BUSINESS FIELDS
+        #
+        # Duplicate checking for these fields is handled
+        # by VendorService using is_deleted=False.
+        #
+        # Therefore deleted Vendor data can be reused.
+        # -------------------------------------------------
+
         self.collection.create_index(
-            [("vendor_name", ASCENDING)],
-            unique=True,
+            [("vendor_name", ASCENDING)]
         )
 
         self.collection.create_index(
-            [("email", ASCENDING)],
-            unique=True,
+            [("email", ASCENDING)]
         )
 
         self.collection.create_index(
-            [("phone", ASCENDING)],
-            unique=True,
+            [("phone", ASCENDING)]
         )
 
         self.collection.create_index(
-            [("gstin", ASCENDING)],
-            unique=True,
+            [("gstin", ASCENDING)]
         )
 
         self.collection.create_index(
-            [("pan", ASCENDING)],
-            unique=True,
+            [("pan", ASCENDING)]
+        )
+
+        self.collection.create_index(
+            [("is_deleted", ASCENDING)]
         )
 
     def find_by_code(self, code):
