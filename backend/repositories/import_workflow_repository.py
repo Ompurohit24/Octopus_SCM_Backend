@@ -114,12 +114,14 @@ class ImportWorkflowRepository(BaseRepository):
             },
         )
 
-    @staticmethod
+
     def soft_delete_by_job_id(
             self,
             job_id: str,
             session=None,
     ):
+        now = datetime.utcnow()
+
         return self.collection.update_many(
             {
                 "job_id": job_id,
@@ -131,10 +133,12 @@ class ImportWorkflowRepository(BaseRepository):
                 "$set": {
                     "is_active": False,
                     "is_deleted": True,
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": now,
                 }
             },
             session=session,
         )
 
-import_workflow_repository = ImportWorkflowRepository()
+import_workflow_repository = (
+    ImportWorkflowRepository()
+)
