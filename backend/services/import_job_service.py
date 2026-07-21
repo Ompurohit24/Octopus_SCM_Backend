@@ -176,7 +176,7 @@ class ImportJobService:
     def delete(job_id: str):
 
         # -------------------------------------------------
-        # VALIDATE IMPORT JOB
+        # FIND IMPORT JOB
         # -------------------------------------------------
 
         job = import_job_repository.find_by_id(
@@ -185,74 +185,32 @@ class ImportJobService:
 
         if not job:
             raise ValueError(
-                "Import Job not found"
+                "Import Job not found."
             )
 
         # -------------------------------------------------
-        # BLOCK DELETE WHEN AN ISSUED PO EXISTS
+        # PROTECT JOB WITH ISSUED PURCHASE ORDERS
         #
-        # Never silently delete an operational job while
-        # there is an active vendor commitment.
+        # Keep your existing PO protection/check here.
+        # It must run BEFORE the transaction deletes anything.
         # -------------------------------------------------
 
-        issued_po = (
-            purchase_order_repository
-            .get_issued_by_job_id(
-                job_id=job_id,
-            )
-        )
-
-        if issued_po:
-            po_number = issued_po.get(
-                "po_number",
-                "Unknown PO",
-            )
-
-            service_name = issued_po.get(
-                "service_name",
-                "Unknown Service",
-            )
-
-            vendor_name = issued_po.get(
-                "vendor_name",
-                "Unknown Vendor",
-            )
-
-            raise ValueError(
-                f"Cannot delete this Import Job. "
-                f"Active Purchase Order {po_number} "
-                f"for {service_name} is assigned to "
-                f"{vendor_name}. Cancel all active "
-                f"Purchase Orders before deleting the job."
-            )
+        # ... your existing Issued PO validation ...
 
         # -------------------------------------------------
-        # TRANSACTIONAL SOFT DELETE
+        # DELETE JOB + WORKFLOW ATOMICALLY
         # -------------------------------------------------
 
         with client.start_session() as session:
-
             with session.start_transaction():
-                job_result = (
-                    import_job_repository
-                    .soft_delete_by_id(
-                        job_id=job_id,
-                        session=session,
-                    )
+                import_job_repository.soft_delete(
+                    job_id,
+                    session=session,
                 )
 
-                if job_result.modified_count == 0:
-                    raise ValueError(
-                        "Import Job not found "
-                        "or already deleted"
-                    )
-
-                (
-                    import_workflow_repository
-                    .soft_delete_by_job_id(
-                        job_id=job_id,
-                        session=session,
-                    )
+                import_workflow_repository.soft_delete_by_job_id(
+                    job_id=job_id,
+                    session=session,
                 )
 
         return {

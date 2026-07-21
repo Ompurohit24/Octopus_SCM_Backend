@@ -42,7 +42,17 @@ class VendorService:
         }
 
     def get(self, vendor_id: str):
-        vendor = vendor_repository.get(vendor_id)
+        vendor = vendor_repository.find_by_id(
+            vendor_id
+        )
+
+        if not vendor:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Vendor not found.",
+            )
+
+        return serialize(vendor)
 
         if not vendor:
             raise HTTPException(
@@ -157,7 +167,7 @@ class VendorService:
         vendor_id: str,
         vendor: VendorUpdate,
     ):
-        existing = vendor_repository.get(
+        existing = vendor_repository.find_by_id(
             vendor_id
         )
 
@@ -242,7 +252,7 @@ class VendorService:
             update_data,
         )
 
-        updated_vendor = vendor_repository.get(
+        updated_vendor = vendor_repository.find_by_id(
             vendor_id
         )
 
@@ -252,11 +262,7 @@ class VendorService:
             self,
             vendor_id: str,
     ):
-        # -------------------------------------------------
-        # FIND VENDOR
-        # -------------------------------------------------
-
-        vendor = vendor_repository.get(
+        vendor = vendor_repository.find_by_id(
             vendor_id
         )
 
@@ -265,13 +271,6 @@ class VendorService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Vendor not found.",
             )
-
-        # -------------------------------------------------
-        # PROTECT VENDOR USED BY PURCHASE ORDER
-        #
-        # Includes Issued and Cancelled POs.
-        # Purchase Order history must retain its Vendor.
-        # -------------------------------------------------
 
         linked_po = (
             purchase_order_repository
@@ -294,18 +293,12 @@ class VendorService:
                 f"Purchase Order history must be retained."
             )
 
-        # -------------------------------------------------
-        # SAFE TO DELETE
-        # -------------------------------------------------
-
-        vendor_repository.delete(
+        vendor_repository.soft_delete(
             vendor_id
         )
 
         return {
-            "message":
-                "Vendor deleted successfully."
+            "message": "Vendor deleted successfully."
         }
-
 
 vendor_service = VendorService()

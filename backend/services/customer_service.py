@@ -273,10 +273,6 @@ class CustomerService:
     @staticmethod
     def delete(customer_id: str):
 
-        # -------------------------------------------------
-        # FIND CUSTOMER
-        # -------------------------------------------------
-
         customer = customer_repository.find_by_id(
             customer_id
         )
@@ -290,10 +286,6 @@ class CustomerService:
             customer.get("customer_name", "")
             .strip()
         )
-
-        # -------------------------------------------------
-        # PROTECT CUSTOMER USED BY IMPORT JOB
-        # -------------------------------------------------
 
         linked_job = (
             import_job_repository.find_active_by_customer(
@@ -315,16 +307,10 @@ class CustomerService:
                 f"deleting this Customer."
             )
 
-        # -------------------------------------------------
-        # SAFE TO DELETE
-        # -------------------------------------------------
-
         customer_repository.soft_delete(
             customer_id
         )
 
         return {
-            "message": (
-                "Customer deleted successfully"
-            )
+            "message": "Customer deleted successfully"
         }
