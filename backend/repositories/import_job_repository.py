@@ -12,28 +12,14 @@ class ImportJobRepository(BaseRepository):
         super().__init__(import_jobs)
 
     def create_indexes(self):
-        # -------------------------------------------------
-        # PERMANENT SYSTEM IDENTIFIER
-        #
-        # IMP-xxxxx must NEVER be reused.
-        # -------------------------------------------------
-
+        # Permanent Import Job number.
+        # Never reuse IMP-xxxxx.
         self.collection.create_index(
             [("job_number", ASCENDING)],
+            unique=True,
         )
 
-        # -------------------------------------------------
-        # BL NUMBER
-        #
-        # Duplicate validation is handled by:
-        # find_by_bl_no()
-        #
-        # which already checks:
-        # is_deleted = False
-        #
-        # Therefore a BL from a deleted Job can be reused.
-        # -------------------------------------------------
-
+        # BL can be reused after the old Job is soft-deleted.
         self.collection.create_index(
             [("bl_no", ASCENDING)]
         )
