@@ -87,7 +87,6 @@ class AuthService:
     def refresh(
             refresh_token: str,
     ):
-
         payload = verify_refresh_token(
             refresh_token
         )
@@ -98,27 +97,58 @@ class AuthService:
             )
 
         user_id = payload.get("sub")
-        email = payload.get("email")
-        role = payload.get("role")
 
         if not user_id:
             raise ValueError(
                 "Invalid refresh token"
             )
 
+        # Verify that the user still exists.
+        try:
+            user = AuthRepository.get_by_id(
+                user_id
+            )
+        except Exception:
+            raise ValueError(
+                "Invalid refresh token"
+            )
+
+        if not user:
+            raise ValueError(
+                "User not found"
+            )
+
+        if not user.get(
+                "is_active",
+                True,
+        ):
+            raise ValueError(
+                "User account is inactive"
+            )
+
+        # Use current user information from DB.
+        token_data = {
+            "sub": str(user["_id"]),
+            "email": user["email"],
+            "role": user["role"],
+        }
+
         new_access_token = (
             create_access_token(
-                {
-                    "sub": user_id,
-                    "email": email,
-                    "role": role,
-                }
+                token_data
             )
         )
 
         return {
             "access_token":
                 new_access_token,
+
+            # Return the existing valid refresh
+            # token so frontend session state
+            # remains complete.
+            "refresh_token":
+                refresh_token,
+
             "token_type":
                 "bearer",
         }
