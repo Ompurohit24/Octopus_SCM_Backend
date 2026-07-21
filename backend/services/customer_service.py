@@ -200,12 +200,17 @@ class CustomerService:
                         }
                     )
 
-                    result = customer_repository.create(
+                    created = customer_repository.create(
                         document,
                         session=session,
                     )
 
-                    document["_id"] = result.inserted_id
+                    if not created:
+                        raise ValueError(
+                            "Unable to create Customer."
+                        )
+
+                    document = created
 
         except DuplicateKeyError as e:
             raise ValueError(str(e))

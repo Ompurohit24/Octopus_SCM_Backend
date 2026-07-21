@@ -11,7 +11,11 @@ class BaseRepository:
 
     # def create(self, document):
     #     return self.collection.insert_one(document)
-    def create(self, document, session=None):
+    def create(
+            self,
+            document,
+            session=None,
+    ):
         document["created_at"] = datetime.utcnow()
         document["updated_at"] = datetime.utcnow()
         document["is_active"] = True
@@ -22,7 +26,15 @@ class BaseRepository:
             session=session,
         )
 
-        return self.find_by_id(result.inserted_id)
+        return self.collection.find_one(
+            {
+                "_id": result.inserted_id,
+                "is_deleted": False,
+            },
+            session=session,
+        )
+
+    
 
     def find_by_id(self, document_id):
         if not isinstance(document_id, ObjectId):

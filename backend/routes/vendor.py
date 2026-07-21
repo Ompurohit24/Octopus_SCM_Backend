@@ -3,6 +3,7 @@ from fastapi import (
     BackgroundTasks,
     HTTPException,
     Query,
+    status,
 )
 
 from backend.models.vendor import (
@@ -85,6 +86,13 @@ def update_vendor(
 def delete_vendor(
     vendor_id: str,
 ):
-    return vendor_service.delete(
-        vendor_id
-    )
+    try:
+        return vendor_service.delete(
+            vendor_id
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )

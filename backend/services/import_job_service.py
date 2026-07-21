@@ -189,19 +189,51 @@ class ImportJobService:
             )
 
         # -------------------------------------------------
-        # PROTECT JOB WITH ISSUED PURCHASE ORDERS
+        # BLOCK DELETE IF ANY ISSUED PO EXISTS
         #
-        # Keep your existing PO protection/check here.
-        # It must run BEFORE the transaction deletes anything.
+        # MUST happen before any database modification.
         # -------------------------------------------------
 
-        # ... your existing Issued PO validation ...
+        issued_po = (
+            purchase_order_repository
+            .get_issued_by_job_id(
+                job_id=job_id,
+            )
+        )
+
+        if issued_po:
+            po_number = issued_po.get(
+                "po_number",
+                "Unknown PO",
+            )
+
+            service_name = issued_po.get(
+                "service_name",
+                "Unknown Service",
+            )
+
+            vendor_name = issued_po.get(
+                "vendor_name",
+                "Assigned Vendor",
+            )
+
+            raise ValueError(
+                f"Cannot delete this Import Job. "
+                f"Active Purchase Order {po_number} "
+                f"for {service_name} is assigned to "
+                f"{vendor_name}. "
+                f"Cancel all active Purchase Orders "
+                f"before deleting the job."
+            )
 
         # -------------------------------------------------
-        # DELETE JOB + WORKFLOW ATOMICALLY
+        # NO ISSUED PO -> SAFE TO DELETE
+        #
+        # Import Job + Workflow are soft-deleted together.
         # -------------------------------------------------
 
         with client.start_session() as session:
+
             with session.start_transaction():
                 import_job_repository.soft_delete(
                     job_id,
