@@ -2,6 +2,8 @@ from pymongo import ASCENDING
 import re
 from backend.database.mongo import db
 from backend.repositories.base_repository import BaseRepository
+from bson import ObjectId
+
 
 vendors = db["vendors"]
 
@@ -136,7 +138,7 @@ class VendorRepository(BaseRepository):
 
             if exclude_id:
                 query["_id"] = {
-                    "$ne": self.to_object_id(exclude_id)
+                    "$ne": ObjectId(exclude_id)
                 }
 
             if self.collection.find_one(query):
