@@ -136,7 +136,7 @@ def start_scheduler():
     scheduler.add_job(
         send_vendor_invoice_reminders,
         trigger=CronTrigger(
-            hour=11,
+            hour=10,
             minute=00,
             timezone="Asia/Kolkata",
         ),

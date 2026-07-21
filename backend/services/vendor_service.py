@@ -1,5 +1,12 @@
-from fastapi import BackgroundTasks, HTTPException, status
 
+from pathlib import Path
+import shutil
+
+from fastapi import (
+    BackgroundTasks,
+    HTTPException,
+    status,
+)
 from backend.models.vendor import VendorCreate, VendorUpdate
 from backend.repositories.vendor_repository import vendor_repository
 from backend.repositories.counter_repository import counter_repository
@@ -7,6 +14,12 @@ from backend.services.email_service import email_service
 from backend.utils.serializer import serialize, serialize_list
 from backend.repositories.purchase_order_repository import (
     purchase_order_repository,
+)
+
+KYC_ROOT = Path("KYC") / "Vendor"
+KYC_ROOT.mkdir(
+    parents=True,
+    exist_ok=True,
 )
 
 class VendorService:
@@ -41,31 +54,97 @@ class VendorService:
             "items": serialize_list(vendors),
         }
 
-    def get(self, vendor_id: str):
-        vendor = vendor_repository.find_by_id(
-            vendor_id
+    def get(
+            self,
+            vendor_id: str,
+    ):
+        vendor = (
+            vendor_repository.find_by_id(
+                vendor_id
+            )
         )
 
         if not vendor:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=
+                status.HTTP_404_NOT_FOUND,
                 detail="Vendor not found.",
             )
 
         return serialize(vendor)
 
-        if not vendor:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Vendor not found.",
+    @staticmethod
+    def save_kyc_documents(
+            vendor_name: str,
+            gst_document=None,
+            pan_document=None,
+    ):
+        vendor_folder = (
+                KYC_ROOT / vendor_name
+        )
+
+        vendor_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        gst_path = None
+        pan_path = None
+
+        if gst_document:
+            extension = Path(
+                gst_document.filename
+            ).suffix
+
+            gst_path = (
+                    vendor_folder
+                    / f"GST{extension}"
             )
 
-        return serialize(vendor)
+            with open(
+                    gst_path,
+                    "wb",
+            ) as buffer:
+                shutil.copyfileobj(
+                    gst_document.file,
+                    buffer,
+                )
+
+        if pan_document:
+            extension = Path(
+                pan_document.filename
+            ).suffix
+
+            pan_path = (
+                    vendor_folder
+                    / f"PAN{extension}"
+            )
+
+            with open(
+                    pan_path,
+                    "wb",
+            ) as buffer:
+                shutil.copyfileobj(
+                    pan_document.file,
+                    buffer,
+                )
+
+        return (
+            str(gst_path)
+            if gst_path
+            else None,
+
+            str(pan_path)
+            if pan_path
+            else None,
+        )
 
     def create(
-        self,
-        vendor: VendorCreate,
-        background_tasks: BackgroundTasks,
+            self,
+            vendor: VendorCreate,
+            background_tasks: BackgroundTasks,
+            gst_document=None,
+            pan_document=None,
     ):
         # -------------------------------------------------
         # NORMALIZE EMAILS
@@ -148,11 +227,40 @@ class VendorService:
 
         document = vendor.model_dump()
 
-        # Never trust frontend-generated code during creation.
-        document["vendor_code"] = vendor_code
+        # Never trust frontend-generated code
+        # during creation.
+        document["vendor_code"] = (
+            vendor_code
+        )
 
-        created_vendor = vendor_repository.create(
-            document
+        # -----------------------------------------
+        # SAVE GST + PAN DOCUMENTS
+        # -----------------------------------------
+
+        gst_path, pan_path = (
+            self.save_kyc_documents(
+                vendor_name=vendor.vendor_name,
+                gst_document=gst_document,
+                pan_document=pan_document,
+            )
+        )
+
+        document[
+            "gst_document"
+        ] = gst_path
+
+        document[
+            "pan_document"
+        ] = pan_path
+
+        # -----------------------------------------
+        # CREATE VENDOR
+        # -----------------------------------------
+
+        created_vendor = (
+            vendor_repository.create(
+                document
+            )
         )
 
         background_tasks.add_task(
@@ -163,9 +271,11 @@ class VendorService:
         return serialize(created_vendor)
 
     def update(
-        self,
-        vendor_id: str,
-        vendor: VendorUpdate,
+            self,
+            vendor_id: str,
+            vendor: VendorUpdate,
+            gst_document=None,
+            pan_document=None,
     ):
         existing = vendor_repository.find_by_id(
             vendor_id
@@ -246,6 +356,44 @@ class VendorService:
         # -------------------------------------------------
         # UPDATE
         # -------------------------------------------------
+
+        # -------------------------------------------------
+        # UPDATE KYC DOCUMENTS
+        #
+        # If no new document is uploaded,
+        # existing document path remains unchanged.
+        # -------------------------------------------------
+
+        vendor_name = merged.get(
+            "vendor_name"
+        )
+
+        if gst_document:
+            gst_path, _ = (
+                self.save_kyc_documents(
+                    vendor_name=vendor_name,
+                    gst_document=gst_document,
+                    pan_document=None,
+                )
+            )
+
+            update_data[
+                "gst_document"
+            ] = gst_path
+
+        if pan_document:
+            _, pan_path = (
+                self.save_kyc_documents(
+                    vendor_name=vendor_name,
+                    gst_document=None,
+                    pan_document=pan_document,
+                )
+            )
+
+            update_data[
+                "pan_document"
+            ] = pan_path
+
 
         vendor_repository.update(
             vendor_id,

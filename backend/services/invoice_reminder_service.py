@@ -9,9 +9,159 @@ from backend.repositories.vendor_repository import (
 from backend.services.email_service import (
     email_service,
 )
+from backend.repositories.import_workflow_repository import (
+    import_workflow_repository,
+)
 
 
 class InvoiceReminderService:
+
+    @staticmethod
+    def _normalize(value):
+        if value is None:
+            return ""
+
+        return str(value).strip().lower()
+
+    def _get_linked_service_status(
+            self,
+            purchase_order: dict,
+    ) -> str:
+        """
+        Return the current Job Status of the exact
+        service linked to this Purchase Order.
+
+        PO identity:
+            job_id
+            category
+            service_name
+        """
+
+        job_id = str(
+            purchase_order.get(
+                "job_id",
+                ""
+            )
+        ).strip()
+
+        category = self._normalize(
+            purchase_order.get(
+                "category"
+            )
+        )
+
+        service_name = str(
+            purchase_order.get(
+                "service_name",
+                ""
+            )
+        ).strip()
+
+        if (
+                not job_id
+                or not category
+                or not service_name
+        ):
+            return ""
+
+        workflow = (
+            import_workflow_repository
+            .find_by_job_id(
+                job_id
+            )
+        )
+
+        if not workflow:
+            return ""
+
+        # -----------------------------------------
+        # OTHER GOV AGENCY
+        #
+        # Example:
+        #
+        # other_gov_agency_type = {
+        #     "FSSAI": {
+        #         "status": "Pending"
+        #     },
+        #     "PPQ": {
+        #         "status": "Done"
+        #     }
+        # }
+        # -----------------------------------------
+
+        if category in {
+            "other gov agency",
+            "other government agency",
+        }:
+
+            services = (
+                    workflow.get(
+                        "other_gov_agency_type"
+                    )
+                    or {}
+            )
+
+            service_data = (
+                    services.get(
+                        service_name
+                    )
+                    or {}
+            )
+
+            if isinstance(
+                    service_data,
+                    dict,
+            ):
+                return self._normalize(
+                    service_data.get(
+                        "status"
+                    )
+                )
+
+            return ""
+
+        # -----------------------------------------
+        # OTHER SERVICES
+        #
+        # Example:
+        #
+        # other_services = {
+        #     "Insurance": {
+        #         "status": "Pending"
+        #     }
+        # }
+        # -----------------------------------------
+
+        if category == "other services":
+
+            services = (
+                    workflow.get(
+                        "other_services"
+                    )
+                    or {}
+            )
+
+            service_data = (
+                    services.get(
+                        service_name
+                    )
+                    or {}
+            )
+
+            if isinstance(
+                    service_data,
+                    dict,
+            ):
+                return self._normalize(
+                    service_data.get(
+                        "status"
+                    )
+                )
+
+            return ""
+
+        return ""
+
 
     def send_daily_invoice_reminders(self):
         """
@@ -103,6 +253,35 @@ class InvoiceReminderService:
                     None,
                     "Pending",
                 ):
+
+                    summary[
+                        "skipped"
+                    ] += 1
+
+                    continue
+
+                # -----------------------------------------
+                # CHECK CURRENT SERVICE JOB STATUS
+                #
+                # Daily invoice reminder continues only
+                # while the exact PO-linked service is
+                # still Pending in Update Job.
+                # -----------------------------------------
+
+                service_status = (
+                    self._get_linked_service_status(
+                        current_po
+                    )
+                )
+
+                if service_status != "pending":
+                    print(
+                        "[Invoice Reminder] "
+                        f"{po_number}: skipped because "
+                        f"linked service status is "
+                        f"'{service_status or 'missing'}'.",
+                        flush=True,
+                    )
 
                     summary[
                         "skipped"

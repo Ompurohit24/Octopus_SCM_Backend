@@ -16,8 +16,7 @@ class CustomerRepository(BaseRepository):
         # -------------------------------------------------
         # PERMANENT SYSTEM IDENTIFIER
         #
-        # Customer Code must NEVER be reused,
-        # even if the Customer is soft-deleted.
+        # Customer Code must always remain unique.
         # -------------------------------------------------
 
         self.collection.create_index(
@@ -27,13 +26,10 @@ class CustomerRepository(BaseRepository):
         )
 
         # -------------------------------------------------
-        # CUSTOMER NAME
+        # SEARCH INDEXES ONLY
         #
-        # Duplicate validation is currently handled by
-        # CustomerService case-insensitively.
-        #
-        # Do not make this a normal unique index because
-        # deleted Customer names must be reusable.
+        # Duplicate values are allowed for all
+        # Customer business fields.
         # -------------------------------------------------
 
         self.collection.create_index(
@@ -41,59 +37,30 @@ class CustomerRepository(BaseRepository):
             name="customer_name_search",
         )
 
-        # -------------------------------------------------
-        # REUSABLE BUSINESS FIELDS
-        #
-        # Unique only while is_deleted == False.
-        #
-        # Create -> Delete -> Create same data = ALLOWED
-        # -------------------------------------------------
-
         self.collection.create_index(
             [("email", ASCENDING)],
-            unique=True,
-            partialFilterExpression={
-                "is_deleted": False,
-            },
-            name="customer_email_active_unique",
+            name="customer_email_search",
         )
 
         self.collection.create_index(
             [("phone", ASCENDING)],
-            unique=True,
-            partialFilterExpression={
-                "is_deleted": False,
-            },
-            name="customer_phone_active_unique",
+            name="customer_phone_search",
         )
 
         self.collection.create_index(
             [("gstin", ASCENDING)],
-            unique=True,
-            partialFilterExpression={
-                "is_deleted": False,
-            },
-            name="customer_gstin_active_unique",
+            name="customer_gstin_search",
         )
 
         self.collection.create_index(
             [("pan", ASCENDING)],
-            unique=True,
-            partialFilterExpression={
-                "is_deleted": False,
-            },
-            name="customer_pan_active_unique",
+            name="customer_pan_search",
         )
 
         self.collection.create_index(
             [("tan", ASCENDING)],
-            unique=True,
-            partialFilterExpression={
-                "is_deleted": False,
-            },
-            name="customer_tan_active_unique",
+            name="customer_tan_search",
         )
-
 
     def find_by_code(self, code):
 
