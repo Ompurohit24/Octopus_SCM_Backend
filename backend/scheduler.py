@@ -135,25 +135,15 @@ def start_scheduler():
 
     scheduler.add_job(
         send_vendor_invoice_reminders,
-
         trigger=CronTrigger(
-            hour=10,
-            minute=0,
+            hour=11,
+            minute=00,
             timezone="Asia/Kolkata",
         ),
-
-        id=(
-            "daily_vendor_invoice_reminder"
-        ),
-
-        name=(
-            "Daily Vendor Invoice Reminder"
-        ),
-
+        id="daily_vendor_invoice_reminder",
+        name="Daily Vendor Invoice Reminder",
         replace_existing=True,
-
         max_instances=1,
-
         coalesce=True,
     )
 

@@ -70,6 +70,9 @@ class EmailService:
         # Visible recipients.
         message["To"] = ", ".join(recipients)
 
+
+
+
         email_display = ", ".join(recipients)
 
         html = f"""
@@ -174,7 +177,6 @@ class EmailService:
                 recipients,
                 message.as_string(),
             )
-
     @staticmethod
     def send_vendor_created_email(vendor: dict):
 
@@ -1764,6 +1766,19 @@ class EmailService:
             recipients
         )
 
+        # -------------------------------------------------
+        # FIXED CC RECIPIENTS
+        # -------------------------------------------------
+
+        cc_recipients = [
+            "prakashnbhatt3@gmail.com",
+            "bhattprakassh@gmail.com",
+        ]
+
+        message["Cc"] = ", ".join(
+            cc_recipients
+        )
+
         html = f"""
         <html>
             <body
@@ -1933,12 +1948,18 @@ class EmailService:
                 settings.SMTP_PASSWORD,
             )
 
-            server.sendmail(
-                settings.SMTP_FROM,
-                recipients,
-                message.as_string(),
+            all_recipients = list(
+                dict.fromkeys(
+                    recipients
+                    + cc_recipients
+                )
             )
 
+            server.sendmail(
+                settings.SMTP_FROM,
+                all_recipients,
+                message.as_string(),
+            )
         return True
 
 

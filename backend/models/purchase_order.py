@@ -40,6 +40,7 @@ class PurchaseOrderCreate(BaseModel):
     category: Literal[
         "Other Gov Agency",
         "Other Services",
+        "Transportation",
     ]
 
     service_name: str
