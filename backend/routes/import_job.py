@@ -75,7 +75,16 @@ def update_import_job(
 def delete_import_job(
     job_id: str,
 ):
-    return ImportJobService.delete(job_id)
+    try:
+        return ImportJobService.delete(
+            job_id
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
 
 @router.post("/read-pdf")
 async def read_import_job_pdf(
