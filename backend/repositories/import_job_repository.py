@@ -2,7 +2,7 @@ from pymongo import ASCENDING
 from bson import ObjectId
 from backend.database.mongo import db
 from backend.repositories.base_repository import BaseRepository
-
+from datetime import datetime
 import_jobs = db["import_jobs"]
 
 
@@ -135,5 +135,24 @@ class ImportJobRepository(BaseRepository):
             },
         )
 
+    def soft_delete_by_id(
+            self,
+            job_id: str,
+            session=None,
+    ):
+        return self.collection.update_one(
+            {
+                "_id": ObjectId(job_id),
+                "is_deleted": False,
+            },
+            {
+                "$set": {
+                    "is_active": False,
+                    "is_deleted": True,
+                    "updated_at": datetime.utcnow(),
+                }
+            },
+            session=session,
+        )
 
 import_job_repository = ImportJobRepository()

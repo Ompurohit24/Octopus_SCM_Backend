@@ -5,7 +5,7 @@ from backend.repositories.base_repository import BaseRepository
 
 import_workflows = db["import_workflows"]
 
-
+from datetime import datetime
 class ImportWorkflowRepository(BaseRepository):
 
     def __init__(self):
@@ -114,5 +114,27 @@ class ImportWorkflowRepository(BaseRepository):
             },
         )
 
+    @staticmethod
+    def soft_delete_by_job_id(
+            self,
+            job_id: str,
+            session=None,
+    ):
+        return self.collection.update_many(
+            {
+                "job_id": job_id,
+                "is_deleted": {
+                    "$ne": True,
+                },
+            },
+            {
+                "$set": {
+                    "is_active": False,
+                    "is_deleted": True,
+                    "updated_at": datetime.utcnow(),
+                }
+            },
+            session=session,
+        )
 
 import_workflow_repository = ImportWorkflowRepository()

@@ -416,7 +416,23 @@ class PurchaseOrderRepository:
             result.modified_count > 0
         )
 
+    @staticmethod
+    def get_issued_by_job_id(
+            job_id: str,
+    ):
+        """
+        Return any active Issued Purchase Order
+        belonging to the Import Job.
 
-purchase_order_repository = (
-    PurchaseOrderRepository()
-)
+        Used to prevent deletion of a job while
+        a vendor commitment is still active.
+        """
+
+        return purchase_orders.find_one(
+            {
+                "job_id": job_id,
+                "status": "Issued",
+            }
+        )
+
+purchase_order_repository = PurchaseOrderRepository()

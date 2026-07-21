@@ -1,5 +1,5 @@
 from datetime import datetime
-
+from backend.database.mongo import client
 from backend.models.import_job import ImportJobCreate, ImportJobUpdate
 from backend.repositories.counter_repository import counter_repository
 from backend.repositories.import_job_repository import import_job_repository
@@ -8,6 +8,10 @@ from backend.repositories.customer_repository import customer_repository
 from backend.services.email_service import email_service
 from backend.repositories.import_workflow_repository import (
     import_workflow_repository,
+)
+
+from backend.repositories.purchase_order_repository import (
+    purchase_order_repository,
 )
 class ImportJobService:
 
@@ -171,8 +175,87 @@ class ImportJobService:
     @staticmethod
     def delete(job_id: str):
 
-        import_job_repository.soft_delete(job_id)
+        # -------------------------------------------------
+        # VALIDATE IMPORT JOB
+        # -------------------------------------------------
+
+        job = import_job_repository.find_by_id(
+            job_id
+        )
+
+        if not job:
+            raise ValueError(
+                "Import Job not found"
+            )
+
+        # -------------------------------------------------
+        # BLOCK DELETE WHEN AN ISSUED PO EXISTS
+        #
+        # Never silently delete an operational job while
+        # there is an active vendor commitment.
+        # -------------------------------------------------
+
+        issued_po = (
+            purchase_order_repository
+            .get_issued_by_job_id(
+                job_id=job_id,
+            )
+        )
+
+        if issued_po:
+            po_number = issued_po.get(
+                "po_number",
+                "Unknown PO",
+            )
+
+            service_name = issued_po.get(
+                "service_name",
+                "Unknown Service",
+            )
+
+            vendor_name = issued_po.get(
+                "vendor_name",
+                "Unknown Vendor",
+            )
+
+            raise ValueError(
+                f"Cannot delete this Import Job. "
+                f"Active Purchase Order {po_number} "
+                f"for {service_name} is assigned to "
+                f"{vendor_name}. Cancel all active "
+                f"Purchase Orders before deleting the job."
+            )
+
+        # -------------------------------------------------
+        # TRANSACTIONAL SOFT DELETE
+        # -------------------------------------------------
+
+        with client.start_session() as session:
+
+            with session.start_transaction():
+                job_result = (
+                    import_job_repository
+                    .soft_delete_by_id(
+                        job_id=job_id,
+                        session=session,
+                    )
+                )
+
+                if job_result.modified_count == 0:
+                    raise ValueError(
+                        "Import Job not found "
+                        "or already deleted"
+                    )
+
+                (
+                    import_workflow_repository
+                    .soft_delete_by_job_id(
+                        job_id=job_id,
+                        session=session,
+                    )
+                )
 
         return {
-            "message": "Import Job deleted successfully"
+            "message":
+                "Import Job deleted successfully"
         }
