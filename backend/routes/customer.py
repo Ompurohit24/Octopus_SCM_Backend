@@ -37,18 +37,19 @@ from backend.utils.dependencies import (
     get_current_user,
 )
 
-
-
 router = APIRouter(
     prefix="/customers",
     tags=["Customers"],
 )
+
+
 class CustomerOTPVerifyRequest(BaseModel):
     registration_id: str
 
     management_email_otp: str | None = None
     accounts_email_otp: str | None = None
     operations_email_otp: str | None = None
+
 
 # =========================================================
 # CREATE CUSTOMER
@@ -57,26 +58,26 @@ class CustomerOTPVerifyRequest(BaseModel):
 
 @router.post("/registration/start")
 async def start_customer_registration(
-    customer_name: str = Form(...),
-    address: str = Form(...),
+        customer_name: str = Form(...),
+        address: str = Form(...),
 
-    management_email: str | None = Form(None),
-    accounts_email: str | None = Form(None),
-    operations_email: str | None = Form(None),
+        management_email: str | None = Form(None),
+        accounts_email: str | None = Form(None),
+        operations_email: str | None = Form(None),
 
-    countryCode: str = Form("+91"),
-    phone: str = Form(...),
+        countryCode: str = Form("+91"),
+        phone: str = Form(...),
 
-    gstin: str = Form(...),
-    pan: str = Form(...),
-    tan: str = Form(""),
+        gstin: str = Form(...),
+        pan: str = Form(...),
+        tan: str = Form(""),
 
-    gst_document: UploadFile | None = File(None),
-    pan_document: UploadFile | None = File(None),
+        gst_document: UploadFile | None = File(None),
+        pan_document: UploadFile | None = File(None),
 
-    user=Depends(
-        get_current_user
-    ),
+        user=Depends(
+            get_current_user
+        ),
 ):
     # -------------------------------------------------
     # CLEAN EMAILS
@@ -101,11 +102,11 @@ async def start_customer_registration(
     )
 
     if not any(
-        [
-            management_email,
-            accounts_email,
-            operations_email,
-        ]
+            [
+                management_email,
+                accounts_email,
+                operations_email,
+            ]
     ):
         raise HTTPException(
             status_code=422,
@@ -127,13 +128,13 @@ async def start_customer_registration(
         address=address,
 
         management_email=
-            management_email,
+        management_email,
 
         accounts_email=
-            accounts_email,
+        accounts_email,
 
         operations_email=
-            operations_email,
+        operations_email,
 
         countryCode=countryCode,
         phone=phone,
@@ -216,10 +217,10 @@ async def start_customer_registration(
         # ---------------------------------------------
 
         pending_root = (
-            Path("KYC")
-            / "Pending"
-            / "Customer"
-            / registration_id
+                Path("KYC")
+                / "Pending"
+                / "Customer"
+                / registration_id
         )
 
         pending_root.mkdir(
@@ -228,21 +229,19 @@ async def start_customer_registration(
         )
 
         if gst_document:
-
             extension = Path(
                 gst_document.filename
             ).suffix
 
             gst_path = (
-                pending_root
-                / f"GST{extension}"
+                    pending_root
+                    / f"GST{extension}"
             )
 
             with open(
-                gst_path,
-                "wb",
+                    gst_path,
+                    "wb",
             ) as buffer:
-
                 shutil.copyfileobj(
                     gst_document.file,
                     buffer,
@@ -255,21 +254,19 @@ async def start_customer_registration(
             )
 
         if pan_document:
-
             extension = Path(
                 pan_document.filename
             ).suffix
 
             pan_path = (
-                pending_root
-                / f"PAN{extension}"
+                    pending_root
+                    / f"PAN{extension}"
             )
 
             with open(
-                pan_path,
-                "wb",
+                    pan_path,
+                    "wb",
             ) as buffer:
-
                 shutil.copyfileobj(
                     pan_document.file,
                     buffer,
@@ -286,17 +283,16 @@ async def start_customer_registration(
         # ---------------------------------------------
 
         if temporary_documents:
-
             pending_registration_repository \
                 .update_registration(
-                    registration_id=
-                        registration_id,
+                registration_id=
+                registration_id,
 
-                    update_data={
-                        "temporary_documents":
-                            temporary_documents,
-                    },
-                )
+                update_data={
+                    "temporary_documents":
+                        temporary_documents,
+                },
+            )
 
         # ---------------------------------------------
         # SEND OTP TO EVERY ENTERED CUSTOMER EMAIL
@@ -316,8 +312,8 @@ async def start_customer_registration(
         verification_fields = []
 
         for (
-            email_key,
-            otp,
+                email_key,
+                otp,
         ) in plain_otps.items():
 
             email_address = (
@@ -333,21 +329,21 @@ async def start_customer_registration(
                 email_service
                 .send_registration_otp_email(
                     recipient_email=
-                        email_address,
+                    email_address,
 
                     otp=
-                        otp,
+                    otp,
 
                     entity_type=
-                        "customer",
+                    "customer",
 
                     entity_name=
-                        customer_name,
+                    customer_name,
 
                     email_role=
-                        email_roles[
-                            email_key
-                        ],
+                    email_roles[
+                        email_key
+                    ],
                 )
             )
 
@@ -588,7 +584,6 @@ async def start_customer_registration(
 
 @router.get("/next-code")
 def get_next_customer_code():
-
     return {
         "customer_code":
             CustomerService
@@ -603,9 +598,9 @@ def get_next_customer_code():
 
 @router.post("/registration/verify")
 def verify_customer_registration(
-    data: CustomerOTPVerifyRequest,
-    background_tasks: BackgroundTasks,
-    user=Depends(get_current_user),
+        data: CustomerOTPVerifyRequest,
+        background_tasks: BackgroundTasks,
+        user=Depends(get_current_user),
 ):
     try:
         registration = (
@@ -621,16 +616,16 @@ def verify_customer_registration(
             )
 
         if (
-            registration.get("entity_type")
-            != "customer"
+                registration.get("entity_type")
+                != "customer"
         ):
             raise ValueError(
                 "Invalid Customer registration."
             )
 
         if (
-            registration.get("created_by")
-            != user["sub"]
+                registration.get("created_by")
+                != user["sub"]
         ):
             raise ValueError(
                 "You are not authorized to verify "
@@ -638,8 +633,8 @@ def verify_customer_registration(
             )
 
         if (
-            registration.get("status")
-            != "pending"
+                registration.get("status")
+                != "pending"
         ):
             raise ValueError(
                 "Customer registration is no longer pending."
@@ -668,7 +663,7 @@ def verify_customer_registration(
         # -------------------------------------------------
 
         for email_key, verification in (
-            verifications.items()
+                verifications.items()
         ):
             if verification.get("verified"):
                 continue
@@ -687,13 +682,13 @@ def verify_customer_registration(
                 pending_registration_service
                 .verify_email_otp(
                     registration_id=
-                        data.registration_id,
+                    data.registration_id,
 
                     email_key=
-                        email_key,
+                    email_key,
 
                     otp=
-                        otp,
+                    otp,
                 )
             )
 
@@ -721,15 +716,15 @@ def verify_customer_registration(
         )
 
         all_verified = (
-            bool(verifications)
-            and all(
-                item.get(
-                    "verified",
-                    False,
-                )
-                for item
-                in verifications.values()
+                bool(verifications)
+                and all(
+            item.get(
+                "verified",
+                False,
             )
+            for item
+            in verifications.values()
+        )
         )
 
         if not all_verified:
@@ -749,13 +744,13 @@ def verify_customer_registration(
             CustomerService
             .create_from_verified_registration(
                 registration=
-                    registration,
+                registration,
 
                 user_id=
-                    user["sub"],
+                user["sub"],
 
                 background_tasks=
-                    background_tasks,
+                background_tasks,
             )
         )
 
@@ -776,11 +771,13 @@ def verify_customer_registration(
             status_code=400,
             detail=str(e),
         )
+
+
 @router.get("")
 def get_customers(
-    skip: int = 0,
-    limit: int = 20,
-    search: str = "",
+        skip: int = 0,
+        limit: int = 20,
+        search: str = "",
 ):
     return CustomerService.get_all(
         skip,
@@ -795,8 +792,8 @@ def get_customers(
 
 @router.put("/{customer_id}")
 def update_customer(
-    customer_id: str,
-    customer: CustomerUpdate,
+        customer_id: str,
+        customer: CustomerUpdate,
 ):
     try:
         return CustomerService.update(
@@ -817,7 +814,7 @@ def update_customer(
 
 @router.delete("/{customer_id}")
 def delete_customer(
-    customer_id: str,
+        customer_id: str,
 ):
     try:
         return CustomerService.delete(
@@ -827,35 +824,36 @@ def delete_customer(
     except ValueError as e:
         raise HTTPException(
             status_code=
-                status.HTTP_409_CONFLICT,
+            status.HTTP_409_CONFLICT,
 
             detail=str(e),
         )
+
 
 @router.get(
     "/registration/pending/{registration_id}"
 )
 def get_pending_customer_registration(
-    registration_id: str,
-    user=Depends(get_current_user),
+        registration_id: str,
+        user=Depends(get_current_user),
 ):
     try:
         result = (
             pending_registration_service
             .get_pending_registration(
                 registration_id=
-                    registration_id,
+                registration_id,
 
                 user_id=
-                    user["sub"],
+                user["sub"],
             )
         )
 
         if (
-            result.get(
-                "entity_type"
-            )
-            != "customer"
+                result.get(
+                    "entity_type"
+                )
+                != "customer"
         ):
             raise ValueError(
                 "Invalid Customer registration."
@@ -869,12 +867,13 @@ def get_pending_customer_registration(
             detail=str(e),
         )
 
+
 @router.post(
     "/registration/resend-otp"
 )
 def resend_customer_registration_otp(
-    data: ResendRegistrationOTPRequest,
-    user=Depends(get_current_user),
+        data: ResendRegistrationOTPRequest,
+        user=Depends(get_current_user),
 ):
     allowed_keys = {
         "management_email",
@@ -883,8 +882,8 @@ def resend_customer_registration_otp(
     }
 
     if (
-        data.email_key
-        not in allowed_keys
+            data.email_key
+            not in allowed_keys
     ):
         raise HTTPException(
             status_code=400,
@@ -899,13 +898,13 @@ def resend_customer_registration_otp(
             pending_registration_service
             .resend_otp(
                 registration_id=
-                    data.registration_id,
+                data.registration_id,
 
                 email_key=
-                    data.email_key,
+                data.email_key,
 
                 user_id=
-                    user["sub"],
+                user["sub"],
             )
         )
 
@@ -916,10 +915,10 @@ def resend_customer_registration_otp(
         )
 
         if (
-            registration.get(
-                "entity_type"
-            )
-            != "customer"
+                registration.get(
+                    "entity_type"
+                )
+                != "customer"
         ):
             raise ValueError(
                 "Invalid Customer registration."
@@ -940,28 +939,28 @@ def resend_customer_registration_otp(
             email_service
             .send_registration_otp_email(
                 recipient_email=
-                    result[
-                        "email"
-                    ],
+                result[
+                    "email"
+                ],
 
                 otp=
-                    result[
-                        "otp"
-                    ],
+                result[
+                    "otp"
+                ],
 
                 entity_type=
-                    "customer",
+                "customer",
 
                 entity_name=
-                    registration.get(
-                        "entity_name",
-                        "",
-                    ),
+                registration.get(
+                    "entity_name",
+                    "",
+                ),
 
                 email_role=
-                    labels[
-                        data.email_key
-                    ],
+                labels[
+                    data.email_key
+                ],
             )
         )
 

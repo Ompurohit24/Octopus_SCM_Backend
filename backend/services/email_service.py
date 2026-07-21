@@ -24,36 +24,87 @@ class EmailService:
         # ]
         # -------------------------------------------------
 
-        raw_emails = customer.get("email", [])
+        # -------------------------------------------------
+        # CUSTOMER EMAIL RECIPIENTS
+        #
+        # Current Customer model stores emails in three
+        # separate fields after OTP registration.
+        #
+        # Keep backward compatibility with older Customer
+        # records that used the `email` field.
+        # -------------------------------------------------
 
-        if isinstance(raw_emails, str):
-            emails = [raw_emails]
-        elif isinstance(raw_emails, list):
-            emails = raw_emails
-        else:
-            emails = []
+        raw_emails = []
 
-        # Clean + remove duplicates case-insensitively.
+        for email_key in (
+                "management_email",
+                "accounts_email",
+                "operations_email",
+        ):
+            value = customer.get(
+                email_key
+            )
+
+            if value:
+                raw_emails.append(
+                    str(value).strip()
+                )
+
+        # Backward compatibility with older records.
+        legacy_emails = customer.get(
+            "email",
+            [],
+        )
+
+        if isinstance(
+                legacy_emails,
+                str,
+        ):
+            legacy_emails = [
+                legacy_emails
+            ]
+
+        if isinstance(
+                legacy_emails,
+                list,
+        ):
+            raw_emails.extend(
+                legacy_emails
+            )
+
         recipients = []
         seen = set()
 
-        for item in emails:
-            email = str(item).strip()
+        for item in raw_emails:
+            if not item:
+                continue
+
+            email = str(
+                item
+            ).strip()
 
             if not email:
                 continue
 
-            normalized = email.lower()
+            normalized = (
+                email.lower()
+            )
 
             if normalized in seen:
                 continue
 
-            seen.add(normalized)
-            recipients.append(email)
+            seen.add(
+                normalized
+            )
 
-        # Do not attempt SMTP if no valid recipient exists.
+            recipients.append(
+                email
+            )
+
         if not recipients:
             return
+
+
 
         # -------------------------------------------------
         # EMAIL MESSAGE
