@@ -370,6 +370,33 @@ class PendingRegistrationRepository(
                 > 0
         )
 
+    def update_registration(
+            self,
+            registration_id: str,
+            update_data: dict,
+    ):
+        result = (
+            self.collection
+            .update_one(
+                {
+                    "registration_id":
+                        registration_id,
+
+                    "status":
+                        "pending",
+                },
+                {
+                    "$set":
+                        update_data,
+                },
+            )
+        )
+
+        return (
+                result.matched_count > 0
+        )
+
+
 
 pending_registration_repository = (
     PendingRegistrationRepository()

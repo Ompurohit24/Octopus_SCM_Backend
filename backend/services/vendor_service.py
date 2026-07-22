@@ -10,18 +10,28 @@ from fastapi import (
 from backend.models.vendor import VendorCreate, VendorUpdate
 from backend.repositories.vendor_repository import vendor_repository
 from backend.repositories.counter_repository import counter_repository
-from backend.services.email_service import email_service
+
 from backend.utils.serializer import serialize, serialize_list
 from backend.repositories.purchase_order_repository import (
     purchase_order_repository,
 )
 from datetime import datetime
-
+from backend.models.vendor import (
+    VendorUpdate,
+)
 from backend.repositories.pending_registration_repository import (
     pending_registration_repository,
 )
 
-
+from backend.services.pending_registration_service import (
+    pending_registration_service,
+)
+from backend.utils.serializer import (
+    serialize,
+)
+from backend.services.email_service import (
+    email_service,
+)
 KYC_ROOT = Path("KYC") / "Vendor"
 KYC_ROOT.mkdir(
     parents=True,
@@ -485,6 +495,481 @@ class VendorService:
         )
 
         return serialize(created_vendor)
+
+    @staticmethod
+    def start_email_update(
+            vendor_id: str,
+            vendor: VendorUpdate,
+            user_id: str,
+    ):
+        # -------------------------------------------------
+        # GET EXISTING VENDOR
+        # -------------------------------------------------
+
+        existing = (
+            vendor_repository
+            .find_by_id(
+                vendor_id
+            )
+        )
+
+        if not existing:
+            raise ValueError(
+                "Vendor not found."
+            )
+
+        # -------------------------------------------------
+        # PREPARE PROPOSED UPDATE
+        # -------------------------------------------------
+
+        proposed = (
+            vendor.model_dump(
+                exclude_unset=True
+            )
+        )
+
+        # -------------------------------------------------
+        # DETECT EMAIL CHANGE
+        # -------------------------------------------------
+
+        email_key = "email"
+        email_label = "Email ID"
+
+        old_email = (
+                existing.get(
+                    email_key
+                )
+                or None
+        )
+
+        new_email = (
+                proposed.get(
+                    email_key
+                )
+                or None
+        )
+
+        old_normalized = (
+            str(old_email)
+            .strip()
+            .lower()
+            if old_email
+            else None
+        )
+
+        new_normalized = (
+            str(new_email)
+            .strip()
+            .lower()
+            if new_email
+            else None
+        )
+
+        email_changed = (
+                email_key in proposed
+                and
+                old_normalized
+                !=
+                new_normalized
+        )
+
+        # -------------------------------------------------
+        # NO NEW EMAIL REQUIRES OTP
+        #
+        # Normal Vendor update.
+        # -------------------------------------------------
+
+        if (
+                not email_changed
+                or not new_email
+        ):
+            updated = (
+                VendorService.update(
+                    vendor_id,
+                    vendor,
+                )
+            )
+
+            return {
+                "verification_required":
+                    False,
+
+                "updated":
+                    True,
+
+                "vendor":
+                    updated,
+            }
+
+        # -------------------------------------------------
+        # EMAIL CHANGED
+        #
+        # Existing Vendor must remain untouched until
+        # the new email has been OTP verified.
+        # -------------------------------------------------
+
+        changed_emails = {
+            "vendor_email": {
+                "label":
+                    email_label,
+
+                "email":
+                    str(
+                        new_email
+                    ).strip(),
+            }
+        }
+
+        result = (
+            pending_registration_service
+            .start_vendor_email_update(
+                vendor_id=
+                vendor_id,
+
+                entity_name=
+                existing.get(
+                    "name",
+                    "Vendor",
+                ),
+
+                proposed_data=
+                proposed,
+
+                changed_emails=
+                changed_emails,
+
+                created_by=
+                user_id,
+            )
+        )
+
+        registration = (
+            result[
+                "registration"
+            ]
+        )
+
+        plain_otps = (
+            result[
+                "plain_otps"
+            ]
+        )
+
+        # -------------------------------------------------
+        # SEND OTP ONLY TO NEW VENDOR EMAIL
+        # -------------------------------------------------
+
+        verification_fields = []
+
+        for (
+                key,
+                email_data,
+        ) in changed_emails.items():
+
+            email_address = (
+                email_data.get(
+                    "email"
+                )
+            )
+
+            otp = (
+                plain_otps.get(
+                    key
+                )
+            )
+
+            if (
+                    not email_address
+                    or not otp
+            ):
+                continue
+
+            sent = (
+                email_service
+                .send_registration_otp_email(
+                    recipient_email=
+                    email_address,
+
+                    otp=
+                    otp,
+
+                    entity_type=
+                    "vendor",
+
+                    entity_name=
+                    existing.get(
+                        "name",
+                        "Vendor",
+                    ),
+
+                    email_role=
+                    email_data.get(
+                        "label",
+                        "Email ID",
+                    ),
+                )
+            )
+
+            verification_fields.append(
+                {
+                    "key":
+                        key,
+
+                    "label":
+                        email_data.get(
+                            "label",
+                            "Email ID",
+                        ),
+
+                    "email":
+                        email_address,
+
+                    "verified":
+                        False,
+
+                    "otp_sent":
+                        sent,
+                }
+            )
+
+        return {
+            "verification_required":
+                True,
+
+            "updated":
+                False,
+
+            "registration_id":
+                registration[
+                    "registration_id"
+                ],
+
+            "entity_type":
+                "vendor",
+
+            "operation_type":
+                "email_update",
+
+            "entity_id":
+                vendor_id,
+
+            "entity_name":
+                existing.get(
+                    "name",
+                    "Vendor",
+                ),
+
+            "expires_at":
+                registration.get(
+                    "expires_at"
+                ),
+
+            "verification_fields":
+                verification_fields,
+
+            "message":
+                (
+                    "OTP sent to changed "
+                    "Vendor email address."
+                ),
+        }
+
+    @staticmethod
+    def complete_verified_email_update(
+            registration: dict,
+            user_id: str,
+    ):
+        # -------------------------------------------------
+        # SECURITY / TYPE CHECKS
+        # -------------------------------------------------
+
+        if (
+                registration.get(
+                    "entity_type"
+                )
+                != "vendor"
+        ):
+            raise ValueError(
+                "Invalid Vendor email update."
+            )
+
+        if (
+                registration.get(
+                    "operation_type"
+                )
+                != "email_update"
+        ):
+            raise ValueError(
+                "Invalid Vendor email "
+                "update operation."
+            )
+
+        if (
+                registration.get(
+                    "status"
+                )
+                != "pending"
+        ):
+            raise ValueError(
+                "Vendor email update is "
+                "no longer pending."
+            )
+
+        if (
+                registration.get(
+                    "created_by"
+                )
+                != user_id
+        ):
+            raise ValueError(
+                "You are not authorized to "
+                "complete this Vendor update."
+            )
+
+        # -------------------------------------------------
+        # ALL CHANGED EMAILS MUST BE VERIFIED
+        # -------------------------------------------------
+
+        verifications = (
+            registration.get(
+                "email_verifications",
+                {},
+            )
+        )
+
+        if not verifications:
+            raise ValueError(
+                "Vendor email verification "
+                "is missing."
+            )
+
+        if not all(
+                item.get(
+                    "verified",
+                    False,
+                )
+                for item
+                in verifications.values()
+        ):
+            raise ValueError(
+                "Vendor email must be verified."
+            )
+
+        # -------------------------------------------------
+        # GET EXISTING VENDOR
+        # -------------------------------------------------
+
+        vendor_id = str(
+            registration.get(
+                "entity_id",
+                "",
+            )
+        ).strip()
+
+        if not vendor_id:
+            raise ValueError(
+                "Vendor ID is missing."
+            )
+
+        existing = (
+            vendor_repository
+            .find_by_id(
+                vendor_id
+            )
+        )
+
+        if not existing:
+            raise ValueError(
+                "Vendor not found."
+            )
+
+        # -------------------------------------------------
+        # GET PROPOSED UPDATE
+        # -------------------------------------------------
+
+        proposed_data = dict(
+            registration.get(
+                "form_data",
+                {},
+            )
+        )
+
+        if not proposed_data:
+            raise ValueError(
+                "Pending Vendor update "
+                "data is missing."
+            )
+
+        # Revalidate pending update before committing.
+        vendor_update = VendorUpdate(
+            **proposed_data
+        )
+
+        update_data = (
+            vendor_update.model_dump(
+                exclude_unset=True
+            )
+        )
+
+        update_data[
+            "updated_by"
+        ] = user_id
+
+        update_data[
+            "updated_at"
+        ] = datetime.utcnow()
+
+        # -------------------------------------------------
+        # APPLY VERIFIED UPDATE
+        # -------------------------------------------------
+
+        vendor_repository.update(
+            vendor_id,
+            update_data,
+        )
+
+        updated = (
+            vendor_repository
+            .find_by_id(
+                vendor_id
+            )
+        )
+
+        if not updated:
+            raise ValueError(
+                "Unable to update Vendor."
+            )
+
+        # -------------------------------------------------
+        # MARK PENDING EMAIL UPDATE COMPLETED
+        # -------------------------------------------------
+
+        result = (
+            pending_registration_repository
+            .mark_completed(
+                registration_id=
+                registration[
+                    "registration_id"
+                ],
+
+                entity_id=
+                vendor_id,
+            )
+        )
+
+        if not result.modified_count:
+            raise ValueError(
+                "Vendor was updated but "
+                "verification completion could "
+                "not be recorded."
+            )
+
+        return serialize(
+            updated
+        )
+
+
+
 
     def update(
             self,

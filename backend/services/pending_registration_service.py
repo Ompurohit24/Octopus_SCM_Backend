@@ -1161,6 +1161,405 @@ class PendingRegistrationService:
                 plain_otps,
         }
 
+    # =====================================================
+    # START VENDOR EMAIL UPDATE
+    # =====================================================
+
+    @classmethod
+    def start_vendor_email_update(
+            cls,
+            vendor_id: str,
+            entity_name: str,
+            proposed_data: dict,
+            changed_emails: dict,
+            created_by: str,
+    ):
+        # -------------------------------------------------
+        # VALIDATE
+        # -------------------------------------------------
+
+        if not vendor_id:
+            raise ValueError(
+                "Vendor ID is required."
+            )
+
+        if not changed_emails:
+            raise ValueError(
+                "No Vendor email changes found."
+            )
+
+        # -------------------------------------------------
+        # CREATE REGISTRATION
+        # -------------------------------------------------
+
+        registration_id = str(
+            uuid.uuid4()
+        )
+
+        now = datetime.now(
+            timezone.utc
+        )
+
+        expires_at = (
+                now
+                + timedelta(
+            hours=
+            cls.OTP_VALID_HOURS
+        )
+        )
+
+        email_verifications = {}
+
+        plain_otps = {}
+
+        # -------------------------------------------------
+        # BUILD OTP ONLY FOR CHANGED EMAIL
+        # -------------------------------------------------
+
+        for (
+                email_key,
+                email_data,
+        ) in changed_emails.items():
+
+            email = str(
+                email_data.get(
+                    "email",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not email:
+                continue
+
+            (
+                verification,
+                otp,
+            ) = (
+                cls
+                .build_email_verification(
+                    registration_id=
+                    registration_id,
+
+                    email_key=
+                    email_key,
+
+                    email=
+                    email,
+                )
+            )
+
+            email_verifications[
+                email_key
+            ] = verification
+
+            plain_otps[
+                email_key
+            ] = otp
+
+        if not email_verifications:
+            raise ValueError(
+                "No valid Vendor email "
+                "changes found."
+            )
+
+        # -------------------------------------------------
+        # BUILD PENDING EMAIL UPDATE
+        #
+        # Existing Vendor remains unchanged until
+        # changed email is verified.
+        # -------------------------------------------------
+
+        document = {
+            "registration_id":
+                registration_id,
+
+            "entity_type":
+                "vendor",
+
+            "operation_type":
+                "email_update",
+
+            "entity_id":
+                vendor_id,
+
+            "entity_name":
+                str(
+                    entity_name
+                    or "Vendor"
+                ).strip(),
+
+            # Partial Vendor update is stored here.
+            # It will only be committed after OTP.
+            "form_data":
+                proposed_data,
+
+            "temporary_documents":
+                {},
+
+            "email_verifications":
+                email_verifications,
+
+            "status":
+                "pending",
+
+            "created_by":
+                created_by,
+
+            "created_at":
+                now,
+
+            "updated_at":
+                now,
+
+            "expires_at":
+                expires_at,
+        }
+
+        created = (
+            pending_registration_repository
+            .create(
+                document
+            )
+        )
+
+        if not created:
+            raise ValueError(
+                "Unable to start Vendor "
+                "email verification."
+            )
+
+        return {
+            "registration":
+                created,
+
+            # Internal use only.
+            # Never return OTP values to frontend.
+            "plain_otps":
+                plain_otps,
+        }
+
+    @classmethod
+    def update_pending_registration(
+            cls,
+            registration_id: str,
+            form_data: dict,
+            email_fields: dict,
+            user_id: str,
+    ):
+        # -------------------------------------------------
+        # GET EXISTING PENDING REGISTRATION
+        # -------------------------------------------------
+
+        registration = (
+            pending_registration_repository
+            .find_by_registration_id(
+                registration_id
+            )
+        )
+
+        if not registration:
+            raise ValueError(
+                "Pending registration not found."
+            )
+
+        if (
+                registration.get("status")
+                != "pending"
+        ):
+            raise ValueError(
+                "Registration is no longer pending."
+            )
+
+        if (
+                registration.get("created_by")
+                != user_id
+        ):
+            raise ValueError(
+                "You are not authorized to edit "
+                "this registration."
+            )
+
+        existing_verifications = (
+                registration.get(
+                    "email_verifications",
+                    {},
+                )
+                or {}
+        )
+
+        updated_verifications = {}
+
+        plain_otps = {}
+
+        # -------------------------------------------------
+        # PROCESS CURRENT EMAILS
+        #
+        # Rules:
+        #
+        # SAME email:
+        # → preserve existing verification + OTP state
+        #
+        # CHANGED / NEW email:
+        # → create fresh OTP verification
+        #
+        # REMOVED email:
+        # → disappears from verification list
+        # -------------------------------------------------
+
+        for (
+                email_key,
+                email_data,
+        ) in email_fields.items():
+
+            email = str(
+                email_data.get(
+                    "email",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not email:
+                continue
+
+            existing = (
+                existing_verifications.get(
+                    email_key
+                )
+            )
+
+            existing_email = ""
+
+            if existing:
+                existing_email = str(
+                    existing.get(
+                        "email",
+                        "",
+                    )
+                    or ""
+                ).strip()
+
+            # ---------------------------------------------
+            # EMAIL DID NOT CHANGE
+            #
+            # Preserve:
+            # - verified status
+            # - OTP hash
+            # - OTP expiry
+            # - attempts
+            # ---------------------------------------------
+
+            if (
+                    existing
+                    and
+                    existing_email.lower()
+                    == email.lower()
+            ):
+                updated_verifications[
+                    email_key
+                ] = existing
+
+                continue
+
+            # ---------------------------------------------
+            # NEW / CHANGED EMAIL
+            #
+            # Generate fresh OTP.
+            # ---------------------------------------------
+
+            (
+                verification,
+                otp,
+            ) = (
+                cls.build_email_verification(
+                    registration_id=
+                    registration_id,
+
+                    email_key=
+                    email_key,
+
+                    email=
+                    email,
+                )
+            )
+
+            updated_verifications[
+                email_key
+            ] = verification
+
+            plain_otps[
+                email_key
+            ] = otp
+
+        if not updated_verifications:
+            raise ValueError(
+                "At least one email is required."
+            )
+
+        # -------------------------------------------------
+        # UPDATE SAME PENDING REGISTRATION
+        # -------------------------------------------------
+
+        updated = (
+            pending_registration_repository
+            .update_registration(
+                registration_id=
+                registration_id,
+
+                update_data={
+                    "form_data":
+                        form_data,
+
+                    "email_verifications":
+                        updated_verifications,
+
+                    "entity_name":
+                        (
+                                form_data.get(
+                                    "customer_name"
+                                )
+                                or
+                                form_data.get(
+                                    "name"
+                                )
+                                or
+                                registration.get(
+                                    "entity_name",
+                                    "",
+                                )
+                        ),
+
+                    "updated_at":
+                        datetime.now(
+                            timezone.utc
+                        ),
+                },
+            )
+        )
+
+        if not updated:
+            raise ValueError(
+                "Unable to update pending "
+                "registration."
+            )
+
+        registration = (
+            pending_registration_repository
+            .find_by_registration_id(
+                registration_id
+            )
+        )
+
+        return {
+            "registration":
+                registration,
+
+            # Only changed/new emails appear here.
+            # Therefore caller sends OTP only to these.
+            "plain_otps":
+                plain_otps,
+        }
 
 pending_registration_service = (
     PendingRegistrationService()

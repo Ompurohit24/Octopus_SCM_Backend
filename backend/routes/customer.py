@@ -43,6 +43,14 @@ router = APIRouter(
 )
 
 
+class CustomerPendingRegistrationUpdateRequest(
+    BaseModel
+):
+    registration_id: str
+
+    customer: CustomerCreate
+
+
 class CustomerOTPVerifyRequest(BaseModel):
     registration_id: str
 
@@ -901,6 +909,266 @@ def start_customer_email_update(
             detail=str(e),
         )
 
+
+
+
+
+@router.post(
+    "/registration/update"
+)
+def update_customer_pending_registration(
+        data:
+        CustomerPendingRegistrationUpdateRequest,
+
+        user=Depends(
+            get_current_user
+        ),
+):
+    try:
+        # ---------------------------------------------
+        # PREPARE CUSTOMER FORM DATA
+        # ---------------------------------------------
+
+        form_data = (
+            data.customer.model_dump()
+        )
+
+        # Never allow an old generated code to affect
+        # pending registration editing.
+        form_data.pop(
+            "customer_code",
+            None,
+        )
+
+        # ---------------------------------------------
+        # BUILD CURRENT CUSTOMER EMAIL MAP
+        #
+        # Keys MUST match existing Customer OTP keys.
+        # ---------------------------------------------
+
+        email_fields = {}
+
+        if data.customer.management_email:
+            email_fields[
+                "management_email"
+            ] = {
+                "label":
+                    "Management Email",
+
+                "email":
+                    str(
+                        data.customer
+                        .management_email
+                    ).strip(),
+            }
+
+        if data.customer.accounts_email:
+            email_fields[
+                "accounts_email"
+            ] = {
+                "label":
+                    "Accounts Email",
+
+                "email":
+                    str(
+                        data.customer
+                        .accounts_email
+                    ).strip(),
+            }
+
+        if data.customer.operations_email:
+            email_fields[
+                "operations_email"
+            ] = {
+                "label":
+                    "Operations Email",
+
+                "email":
+                    str(
+                        data.customer
+                        .operations_email
+                    ).strip(),
+            }
+
+        # ---------------------------------------------
+        # UPDATE SAME PENDING REGISTRATION
+        # ---------------------------------------------
+
+        result = (
+            pending_registration_service
+            .update_pending_registration(
+                registration_id=
+                    data.registration_id,
+
+                form_data=
+                    form_data,
+
+                email_fields=
+                    email_fields,
+
+                user_id=
+                    user["sub"],
+            )
+        )
+
+        registration = (
+            result[
+                "registration"
+            ]
+        )
+
+        plain_otps = (
+            result[
+                "plain_otps"
+            ]
+        )
+
+        # ---------------------------------------------
+        # SEND OTP ONLY TO CHANGED / NEW EMAILS
+        # ---------------------------------------------
+
+        for (
+            email_key,
+            otp,
+        ) in plain_otps.items():
+
+            email_data = (
+                email_fields.get(
+                    email_key,
+                    {},
+                )
+            )
+
+            email_address = (
+                email_data.get(
+                    "email"
+                )
+            )
+
+            if not email_address:
+                continue
+
+            email_service.send_registration_otp_email(
+                recipient_email=
+                    email_address,
+
+                otp=
+                    otp,
+
+                entity_type=
+                    "customer",
+
+                entity_name=
+                    form_data.get(
+                        "customer_name",
+                        "Customer",
+                    ),
+
+                email_role=
+                    email_data.get(
+                        "label",
+                        "Customer Email",
+                    ),
+            )
+
+        # ---------------------------------------------
+        # BUILD CURRENT VERIFICATION STATE
+        # ---------------------------------------------
+
+        verification_fields = []
+
+        verifications = (
+            registration.get(
+                "email_verifications",
+                {},
+            )
+            or {}
+        )
+
+        for (
+            key,
+            verification,
+        ) in verifications.items():
+
+            email_data = (
+                email_fields.get(
+                    key,
+                    {},
+                )
+            )
+
+            verification_fields.append(
+                {
+                    "key":
+                        key,
+
+                    "label":
+                        email_data.get(
+                            "label",
+                            key,
+                        ),
+
+                    "email":
+                        verification.get(
+                            "email",
+                            "",
+                        ),
+
+                    "verified":
+                        verification.get(
+                            "verified",
+                            False,
+                        ),
+
+                    "otp_sent":
+                        (
+                            key
+                            in plain_otps
+                        ),
+                }
+            )
+
+        return {
+            "registration_id":
+                registration[
+                    "registration_id"
+                ],
+
+            "entity_type":
+                "customer",
+
+            "entity_name":
+                registration.get(
+                    "entity_name",
+                    "",
+                ),
+
+            "status":
+                registration.get(
+                    "status",
+                    "pending",
+                ),
+
+            "expires_at":
+                registration.get(
+                    "expires_at"
+                ),
+
+            "verification_fields":
+                verification_fields,
+
+            "message":
+                (
+                    "Pending Customer registration "
+                    "updated successfully."
+                ),
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
 # =========================================================
 # UPDATE CUSTOMER
 # =========================================================

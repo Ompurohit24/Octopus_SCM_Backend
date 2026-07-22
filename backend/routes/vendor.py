@@ -42,10 +42,22 @@ router = APIRouter(
     prefix="/vendors",
     tags=["Vendors"],
 )
+
+
+class VendorPendingRegistrationUpdateRequest(
+    BaseModel
+):
+    registration_id: str
+
+    vendor: VendorCreate
 class VendorOTPVerifyRequest(BaseModel):
     registration_id: str
     otp: str
-
+class VendorEmailUpdateStartRequest(
+    BaseModel
+):
+    vendor_id: str
+    vendor: VendorUpdate
 # =========================================================
 # NEXT VENDOR CODE
 # =========================================================
@@ -427,20 +439,68 @@ def verify_vendor_registration(
             }
 
         # ---------------------------------------------
-        # FINAL VENDOR CREATION
+        # EXISTING VENDOR EMAIL UPDATE
+        #
+        # If this pending registration belongs to an
+        # existing Vendor email change, update the
+        # existing Vendor instead of creating a new one.
+        # ---------------------------------------------
+
+        if (
+                registration.get(
+                    "operation_type"
+                )
+                == "email_update"
+        ):
+            vendor = (
+                vendor_service
+                .complete_verified_email_update(
+                    registration=
+                    registration,
+
+                    user_id=
+                    user["sub"],
+                )
+            )
+
+            return {
+                "created":
+                    True,
+
+                "updated":
+                    True,
+
+                "all_verified":
+                    True,
+
+                "operation_type":
+                    "email_update",
+
+                "vendor":
+                    vendor,
+
+                "message":
+                    (
+                        "Vendor email updated "
+                        "successfully."
+                    ),
+            }
+
+        # ---------------------------------------------
+        # FINAL NEW VENDOR CREATION
         # ---------------------------------------------
 
         vendor = (
             vendor_service
             .create_from_verified_registration(
                 registration=
-                    registration,
+                registration,
 
                 user_id=
-                    user["sub"],
+                user["sub"],
 
                 background_tasks=
-                    background_tasks,
+                background_tasks,
             )
         )
 
@@ -709,6 +769,289 @@ async def create_vendor(
 # UPDATE VENDOR
 # =========================================================
 
+
+# =========================================================
+# START VENDOR EMAIL UPDATE
+# =========================================================
+
+
+@router.post(
+    "/email-update/start"
+)
+def start_vendor_email_update(
+        data:
+        VendorEmailUpdateStartRequest,
+
+        user=Depends(
+            get_current_user
+        ),
+):
+    try:
+        return (
+            vendor_service
+            .start_email_update(
+                vendor_id=
+                data.vendor_id,
+
+                vendor=
+                data.vendor,
+
+                user_id=
+                user["sub"],
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+
+
+@router.post(
+    "/registration/update"
+)
+def update_vendor_pending_registration(
+        data:
+        VendorPendingRegistrationUpdateRequest,
+
+        user=Depends(
+            get_current_user
+        ),
+):
+    try:
+        # ---------------------------------------------
+        # PREPARE VENDOR FORM DATA
+        # ---------------------------------------------
+
+        form_data = (
+            data.vendor.model_dump()
+        )
+
+        # Remove generated Vendor code if present.
+        form_data.pop(
+            "vendor_code",
+            None,
+        )
+
+        # ---------------------------------------------
+        # GET CURRENT VENDOR EMAIL
+        #
+        # IMPORTANT:
+        # Vendor model/database field = email
+        # OTP verification key         = vendor_email
+        # ---------------------------------------------
+
+        vendor_email = str(
+            data.vendor.email
+            or ""
+        ).strip()
+
+        if not vendor_email:
+            raise ValueError(
+                "Vendor email is required."
+            )
+
+        email_fields = {
+            "vendor_email": {
+                "label":
+                    "Vendor Email",
+
+                "email":
+                    vendor_email,
+            }
+        }
+
+        # ---------------------------------------------
+        # UPDATE SAME PENDING REGISTRATION
+        # ---------------------------------------------
+
+        result = (
+            pending_registration_service
+            .update_pending_registration(
+                registration_id=
+                    data.registration_id,
+
+                form_data=
+                    form_data,
+
+                email_fields=
+                    email_fields,
+
+                user_id=
+                    user["sub"],
+            )
+        )
+
+        registration = (
+            result[
+                "registration"
+            ]
+        )
+
+        plain_otps = (
+            result[
+                "plain_otps"
+            ]
+        )
+
+        # ---------------------------------------------
+        # SEND OTP ONLY IF VENDOR EMAIL CHANGED
+        #
+        # If same email was already verified,
+        # plain_otps will be empty.
+        # ---------------------------------------------
+
+        for (
+            email_key,
+            otp,
+        ) in plain_otps.items():
+
+            email_data = (
+                email_fields.get(
+                    email_key,
+                    {},
+                )
+            )
+
+            email_address = (
+                email_data.get(
+                    "email"
+                )
+            )
+
+            if not email_address:
+                continue
+
+            email_service.send_registration_otp_email(
+                recipient_email=
+                    email_address,
+
+                otp=
+                    otp,
+
+                entity_type=
+                    "vendor",
+
+                entity_name=
+                    (
+                        form_data.get(
+                            "name"
+                        )
+                        or
+                        form_data.get(
+                            "vendor_name"
+                        )
+                        or
+                        "Vendor"
+                    ),
+
+                email_role=
+                    email_data.get(
+                        "label",
+                        "Vendor Email",
+                    ),
+            )
+
+        # ---------------------------------------------
+        # BUILD CURRENT VERIFICATION STATE
+        # ---------------------------------------------
+
+        verification_fields = []
+
+        verifications = (
+            registration.get(
+                "email_verifications",
+                {},
+            )
+            or {}
+        )
+
+        for (
+            key,
+            verification,
+        ) in verifications.items():
+
+            email_data = (
+                email_fields.get(
+                    key,
+                    {},
+                )
+            )
+
+            verification_fields.append(
+                {
+                    "key":
+                        key,
+
+                    "label":
+                        email_data.get(
+                            "label",
+                            "Vendor Email",
+                        ),
+
+                    "email":
+                        verification.get(
+                            "email",
+                            "",
+                        ),
+
+                    "verified":
+                        verification.get(
+                            "verified",
+                            False,
+                        ),
+
+                    "otp_sent":
+                        (
+                            key
+                            in plain_otps
+                        ),
+                }
+            )
+
+        return {
+            "registration_id":
+                registration[
+                    "registration_id"
+                ],
+
+            "entity_type":
+                "vendor",
+
+            "entity_name":
+                registration.get(
+                    "entity_name",
+                    "",
+                ),
+
+            "status":
+                registration.get(
+                    "status",
+                    "pending",
+                ),
+
+            "expires_at":
+                registration.get(
+                    "expires_at"
+                ),
+
+            "verification_fields":
+                verification_fields,
+
+            "message":
+                (
+                    "Pending Vendor registration "
+                    "updated successfully."
+                ),
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
 @router.put("/{vendor_id}")
 async def update_vendor(
     vendor_id: str,
@@ -869,3 +1212,4 @@ def delete_vendor(
                 status.HTTP_409_CONFLICT,
             detail=str(e),
         )
+
