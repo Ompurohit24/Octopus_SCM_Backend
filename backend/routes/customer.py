@@ -640,6 +640,13 @@ def verify_customer_registration(
                 "Customer registration is no longer pending."
             )
 
+        # -------------------------------------------------
+        # VERIFY ONLY THE EMAIL OTP SUBMITTED
+        #
+        # Frontend now verifies each Customer email
+        # independently.
+        # -------------------------------------------------
+
         otp_values = {
             "management_email":
                 data.management_email_otp,
@@ -651,6 +658,30 @@ def verify_customer_registration(
                 data.operations_email_otp,
         }
 
+        submitted_otps = {
+            email_key: otp
+            for email_key, otp
+            in otp_values.items()
+            if otp and otp.strip()
+        }
+
+        if not submitted_otps:
+            raise ValueError(
+                "OTP is required."
+            )
+
+        # One Verify button = one email verification.
+        if len(submitted_otps) != 1:
+            raise ValueError(
+                "Verify one email at a time."
+            )
+
+        email_key, otp = next(
+            iter(
+                submitted_otps.items()
+            )
+        )
+
         verifications = (
             registration.get(
                 "email_verifications",
@@ -658,44 +689,37 @@ def verify_customer_registration(
             )
         )
 
-        # -------------------------------------------------
-        # VERIFY EVERY EMAIL THAT EXISTS
-        # -------------------------------------------------
-
-        for email_key, verification in (
-                verifications.items()
-        ):
-            if verification.get("verified"):
-                continue
-
-            otp = otp_values.get(
+        verification = (
+            verifications.get(
                 email_key
             )
+        )
 
-            if not otp:
-                raise ValueError(
-                    f"OTP is required for "
-                    f"{email_key.replace('_', ' ').title()}."
-                )
-
-            result = (
-                pending_registration_service
-                .verify_email_otp(
-                    registration_id=
-                    data.registration_id,
-
-                    email_key=
-                    email_key,
-
-                    otp=
-                    otp,
-                )
+        if not verification:
+            raise ValueError(
+                "Email verification not found."
             )
 
-            if not result.get("verified"):
-                raise ValueError(
-                    "OTP verification failed."
-                )
+        result = (
+            pending_registration_service
+            .verify_email_otp(
+                registration_id=
+                data.registration_id,
+
+                email_key=
+                email_key,
+
+                otp=
+                otp,
+            )
+        )
+
+        if not result.get(
+                "verified"
+        ):
+            raise ValueError(
+                "OTP verification failed."
+            )
 
         # -------------------------------------------------
         # RELOAD AFTER OTP VERIFICATION
