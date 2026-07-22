@@ -222,6 +222,15 @@ class PendingRegistrationService:
             "entity_type":
                 "customer",
 
+            "entity_name":
+                str(
+                    form_data.get(
+                        "customer_name",
+                        "",
+                    )
+                    or ""
+                ).strip(),
+
             "form_data":
                 form_data,
 
@@ -337,6 +346,15 @@ class PendingRegistrationService:
 
             "entity_type":
                 "vendor",
+
+            "entity_name":
+                str(
+                    form_data.get(
+                        "vendor_name",
+                        "",
+                    )
+                    or ""
+                ).strip(),
 
             "form_data":
                 form_data,
@@ -701,11 +719,24 @@ class PendingRegistrationService:
                     "entity_type"
                 ],
 
-            "entity_name":
-                registration.get(
-                    "entity_name",
-                    "",
-                ),
+            "entity_name": (
+    registration.get(
+        "entity_name"
+    )
+    or registration.get(
+        "form_data",
+        {},
+    ).get(
+        "customer_name"
+    )
+    or registration.get(
+        "form_data",
+        {},
+    ).get(
+        "vendor_name"
+    )
+    or ""
+),
 
             "status":
                 registration[
@@ -865,12 +896,19 @@ class PendingRegistrationService:
         # ---------------------------------------------
 
         otp = (
-            self._generate_otp()
+            self.generate_otp()
         )
 
         otp_hash = (
-            self._hash_otp(
-                otp
+            self.hash_otp(
+                registration_id=
+                registration_id,
+
+                email_key=
+                email_key,
+
+                otp=
+                otp,
             )
         )
 

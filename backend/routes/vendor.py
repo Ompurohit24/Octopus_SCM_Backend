@@ -570,11 +570,18 @@ def resend_vendor_registration_otp(
                 entity_type=
                     "vendor",
 
-                entity_name=
-                    registration.get(
-                        "entity_name",
-                        "",
-                    ),
+                entity_name=(
+                        registration.get(
+                            "entity_name"
+                        )
+                        or registration.get(
+                    "form_data",
+                    {},
+                ).get(
+                    "vendor_name"
+                )
+                        or "Vendor"
+                ),
 
                 email_role=
                     "Vendor Email",

@@ -951,10 +951,17 @@ def resend_customer_registration_otp(
                 entity_type=
                 "customer",
 
-                entity_name=
-                registration.get(
-                    "entity_name",
-                    "",
+                entity_name=(
+                        registration.get(
+                            "entity_name"
+                        )
+                        or registration.get(
+                    "form_data",
+                    {},
+                ).get(
+                    "customer_name"
+                )
+                        or "Customer"
                 ),
 
                 email_role=
