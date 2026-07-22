@@ -985,6 +985,182 @@ class PendingRegistrationService:
                 otp_expires_at,
         }
 
+    # =====================================================
+    # START CUSTOMER EMAIL UPDATE
+    # =====================================================
+
+    @classmethod
+    def start_customer_email_update(
+            cls,
+            customer_id: str,
+            entity_name: str,
+            proposed_data: dict,
+            changed_emails: dict,
+            created_by: str,
+    ):
+        # -------------------------------------------------
+        # VALIDATE
+        # -------------------------------------------------
+
+        if not customer_id:
+            raise ValueError(
+                "Customer ID is required."
+            )
+
+        if not changed_emails:
+            raise ValueError(
+                "No Customer email changes found."
+            )
+
+        # -------------------------------------------------
+        # CREATE REGISTRATION
+        # -------------------------------------------------
+
+        registration_id = str(
+            uuid.uuid4()
+        )
+
+        now = datetime.now(
+            timezone.utc
+        )
+
+        expires_at = (
+                now
+                + timedelta(
+            hours=
+            cls.OTP_VALID_HOURS
+        )
+        )
+
+        email_verifications = {}
+
+        plain_otps = {}
+
+        # -------------------------------------------------
+        # BUILD OTP ONLY FOR CHANGED EMAILS
+        # -------------------------------------------------
+
+        for (
+                email_key,
+                email_data,
+        ) in changed_emails.items():
+
+            email = str(
+                email_data.get(
+                    "email",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not email:
+                continue
+
+            (
+                verification,
+                otp,
+            ) = (
+                cls
+                .build_email_verification(
+                    registration_id=
+                    registration_id,
+
+                    email_key=
+                    email_key,
+
+                    email=
+                    email,
+                )
+            )
+
+            email_verifications[
+                email_key
+            ] = verification
+
+            plain_otps[
+                email_key
+            ] = otp
+
+        if not email_verifications:
+            raise ValueError(
+                "No valid Customer email "
+                "changes found."
+            )
+
+        # -------------------------------------------------
+        # BUILD PENDING EMAIL UPDATE
+        #
+        # Existing Customer remains unchanged until
+        # every changed email is verified.
+        # -------------------------------------------------
+
+        document = {
+            "registration_id":
+                registration_id,
+
+            "entity_type":
+                "customer",
+
+            "operation_type":
+                "email_update",
+
+            "entity_id":
+                customer_id,
+
+            "entity_name":
+                str(
+                    entity_name
+                    or "Customer"
+                ).strip(),
+
+            "form_data":
+                proposed_data,
+
+            "temporary_documents":
+                {},
+
+            "email_verifications":
+                email_verifications,
+
+            "status":
+                "pending",
+
+            "created_by":
+                created_by,
+
+            "created_at":
+                now,
+
+            "updated_at":
+                now,
+
+            "expires_at":
+                expires_at,
+        }
+
+        created = (
+            pending_registration_repository
+            .create(
+                document
+            )
+        )
+
+        if not created:
+            raise ValueError(
+                "Unable to start Customer "
+                "email verification."
+            )
+
+        return {
+            "registration":
+                created,
+
+            # Internal use only.
+            # Never return plain OTPs to frontend.
+            "plain_otps":
+                plain_otps,
+        }
+
 
 pending_registration_service = (
     PendingRegistrationService()

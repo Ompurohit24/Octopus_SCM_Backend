@@ -50,10 +50,17 @@ class CustomerOTPVerifyRequest(BaseModel):
     accounts_email_otp: str | None = None
     operations_email_otp: str | None = None
 
-
+class CustomerEmailUpdateStartRequest(
+    BaseModel
+):
+    customer_id: str
+    customer: CustomerUpdate
 # =========================================================
 # CREATE CUSTOMER
 # =========================================================
+
+
+
 
 
 @router.post("/registration/start")
@@ -760,6 +767,54 @@ def verify_customer_registration(
                     "still awaiting verification.",
             }
 
+
+
+        # -------------------------------------------------
+        # CUSTOMER EMAIL UPDATE COMPLETION
+        # -------------------------------------------------
+
+        if (
+            registration.get(
+                "operation_type"
+            )
+            == "email_update"
+        ):
+            customer = (
+                CustomerService
+                .complete_verified_email_update(
+                    registration=
+                        registration,
+
+                    user_id=
+                        user["sub"],
+                )
+            )
+
+            return {
+                # Keep these fields because the current
+                # frontend OTP flow checks them.
+                "created":
+                    True,
+
+                "updated":
+                    True,
+
+                "all_verified":
+                    True,
+
+                "operation_type":
+                    "email_update",
+
+                "customer":
+                    customer,
+
+                "message":
+                    (
+                        "Customer email updated "
+                        "successfully."
+                    ),
+            }
+
         # -------------------------------------------------
         # FINAL CUSTOMER CREATION
         # -------------------------------------------------
@@ -809,6 +864,42 @@ def get_customers(
         search,
     )
 
+# =========================================================
+# START CUSTOMER EMAIL UPDATE
+# =========================================================
+
+
+@router.post(
+    "/email-update/start"
+)
+def start_customer_email_update(
+        data:
+        CustomerEmailUpdateStartRequest,
+
+        user=Depends(
+            get_current_user
+        ),
+):
+    try:
+        return (
+            CustomerService
+            .start_email_update(
+                customer_id=
+                    data.customer_id,
+
+                customer=
+                    data.customer,
+
+                user_id=
+                    user["sub"],
+            )
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
 
 # =========================================================
 # UPDATE CUSTOMER

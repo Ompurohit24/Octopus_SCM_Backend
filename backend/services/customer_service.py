@@ -4,7 +4,12 @@ import shutil
 
 from fastapi import BackgroundTasks
 from pymongo.errors import DuplicateKeyError
-
+from backend.services.pending_registration_service import (
+    pending_registration_service,
+)
+from backend.services.email_service import (
+    email_service,
+)
 from backend.database.mongo import client
 from backend.models.customer import CustomerCreate, CustomerUpdate
 from backend.repositories.counter_repository import counter_repository
@@ -481,6 +486,207 @@ class CustomerService:
         return serialize(customer)
 
     @staticmethod
+    def complete_verified_email_update(
+            registration: dict,
+            user_id: str,
+    ):
+        # -------------------------------------------------
+        # SECURITY / TYPE CHECKS
+        # -------------------------------------------------
+
+        if (
+            registration.get(
+                "entity_type"
+            )
+            != "customer"
+        ):
+            raise ValueError(
+                "Invalid Customer email update."
+            )
+
+        if (
+            registration.get(
+                "operation_type"
+            )
+            != "email_update"
+        ):
+            raise ValueError(
+                "Invalid Customer email "
+                "update operation."
+            )
+
+        if (
+            registration.get(
+                "status"
+            )
+            != "pending"
+        ):
+            raise ValueError(
+                "Customer email update is "
+                "no longer pending."
+            )
+
+        if (
+            registration.get(
+                "created_by"
+            )
+            != user_id
+        ):
+            raise ValueError(
+                "You are not authorized to "
+                "complete this Customer update."
+            )
+
+        # -------------------------------------------------
+        # ALL CHANGED EMAILS MUST BE VERIFIED
+        # -------------------------------------------------
+
+        verifications = (
+            registration.get(
+                "email_verifications",
+                {},
+            )
+        )
+
+        if not verifications:
+            raise ValueError(
+                "Customer email verification "
+                "is missing."
+            )
+
+        if not all(
+            item.get(
+                "verified",
+                False,
+            )
+            for item
+            in verifications.values()
+        ):
+            raise ValueError(
+                "All changed Customer emails "
+                "must be verified."
+            )
+
+        # -------------------------------------------------
+        # GET TARGET CUSTOMER
+        # -------------------------------------------------
+
+        customer_id = str(
+            registration.get(
+                "entity_id",
+                "",
+            )
+        ).strip()
+
+        if not customer_id:
+            raise ValueError(
+                "Customer ID is missing."
+            )
+
+        existing = (
+            customer_repository
+            .find_by_id(
+                customer_id
+            )
+        )
+
+        if not existing:
+            raise ValueError(
+                "Customer not found."
+            )
+
+        # -------------------------------------------------
+        # GET PROPOSED UPDATE
+        # -------------------------------------------------
+
+        proposed_data = dict(
+            registration.get(
+                "form_data",
+                {},
+            )
+        )
+
+        if not proposed_data:
+            raise ValueError(
+                "Pending Customer update "
+                "data is missing."
+            )
+
+        # Revalidate the stored pending patch.
+        #
+        # CustomerUpdate is correct here because
+        # this is a partial update, not creation.
+
+        customer_update = CustomerUpdate(
+            **proposed_data
+        )
+
+        update_data = (
+            customer_update.model_dump(
+                exclude_unset=True
+            )
+        )
+
+        update_data[
+            "updated_by"
+        ] = user_id
+
+        update_data[
+            "updated_at"
+        ] = datetime.utcnow()
+
+        # -------------------------------------------------
+        # APPLY VERIFIED UPDATE
+        # -------------------------------------------------
+
+        customer_repository.update(
+            customer_id,
+            update_data,
+        )
+
+        updated = (
+            customer_repository
+            .find_by_id(
+                customer_id
+            )
+        )
+
+        if not updated:
+            raise ValueError(
+                "Unable to update Customer."
+            )
+
+        # -------------------------------------------------
+        # MARK PENDING OPERATION COMPLETED
+        # -------------------------------------------------
+
+        result = (
+            pending_registration_repository
+            .mark_completed(
+                registration_id=
+                    registration[
+                        "registration_id"
+                    ],
+
+                entity_id=
+                    customer_id,
+            )
+        )
+
+        if not result.modified_count:
+            raise ValueError(
+                "Customer was updated but "
+                "verification completion could "
+                "not be recorded."
+            )
+
+        return serialize(
+            updated
+        )
+
+
+
+    @staticmethod
     def update(
         customer_id: str,
         customer: CustomerUpdate,
@@ -541,4 +747,297 @@ class CustomerService:
 
         return {
             "message": "Customer deleted successfully"
+        }
+
+
+    @staticmethod
+    def start_email_update(
+            customer_id: str,
+            customer: CustomerUpdate,
+            user_id: str,
+    ):
+        existing = (
+            customer_repository
+            .find_by_id(
+                customer_id
+            )
+        )
+
+        if not existing:
+            raise ValueError(
+                "Customer not found."
+            )
+
+        proposed = (
+            customer.model_dump(
+                exclude_unset=True
+            )
+        )
+
+        email_fields = {
+            "management_email":
+                "Management Email",
+
+            "accounts_email":
+                "Accounts Email",
+
+            "operations_email":
+                "Operations Email",
+        }
+
+        changed_emails = {}
+
+        for (
+            email_key,
+            label,
+        ) in email_fields.items():
+
+            if email_key not in proposed:
+                continue
+
+            old_email = (
+                existing.get(
+                    email_key
+                )
+                or None
+            )
+
+            new_email = (
+                proposed.get(
+                    email_key
+                )
+                or None
+            )
+
+            old_normalized = (
+                str(old_email)
+                .strip()
+                .lower()
+                if old_email
+                else None
+            )
+
+            new_normalized = (
+                str(new_email)
+                .strip()
+                .lower()
+                if new_email
+                else None
+            )
+
+            if (
+                old_normalized
+                ==
+                new_normalized
+            ):
+                continue
+
+            # OTP is required only when a NEW
+            # email address is being introduced.
+            if new_email:
+                changed_emails[
+                    email_key
+                ] = {
+                    "label":
+                        label,
+
+                    "email":
+                        str(
+                            new_email
+                        ).strip(),
+                }
+
+        # -----------------------------------------
+        # NO EMAIL CHANGED
+        #
+        # Normal update can proceed immediately.
+        # -----------------------------------------
+
+        if not changed_emails:
+            updated = (
+                CustomerService.update(
+                    customer_id,
+                    customer,
+                )
+            )
+
+            return {
+                "verification_required":
+                    False,
+
+                "updated":
+                    True,
+
+                "customer":
+                    updated,
+            }
+
+        # -----------------------------------------
+        # EMAIL CHANGED
+        #
+        # Do NOT update Customer yet.
+        # -----------------------------------------
+
+        # -----------------------------------------
+        # EMAIL CHANGED
+        #
+        # Do NOT update Customer yet.
+        #
+        # Create a pending email-update
+        # registration and send OTP only to
+        # changed/new email addresses.
+        # -----------------------------------------
+
+        result = (
+            pending_registration_service
+            .start_customer_email_update(
+                customer_id=
+                customer_id,
+
+                entity_name=
+                existing.get(
+                    "customer_name",
+                    "Customer",
+                ),
+
+                proposed_data=
+                proposed,
+
+                changed_emails=
+                changed_emails,
+
+                created_by=
+                user_id,
+            )
+        )
+
+        registration = (
+            result[
+                "registration"
+            ]
+        )
+
+        plain_otps = (
+            result[
+                "plain_otps"
+            ]
+        )
+
+        # -----------------------------------------
+        # SEND OTP TO CHANGED EMAILS ONLY
+        # -----------------------------------------
+
+        verification_fields = []
+
+        for (
+                email_key,
+                email_data,
+        ) in changed_emails.items():
+
+            email_address = (
+                email_data.get(
+                    "email"
+                )
+            )
+
+            otp = (
+                plain_otps.get(
+                    email_key
+                )
+            )
+
+            if (
+                    not email_address
+                    or not otp
+            ):
+                continue
+
+            sent = (
+                email_service
+                .send_registration_otp_email(
+                    recipient_email=
+                    email_address,
+
+                    otp=
+                    otp,
+
+                    entity_type=
+                    "customer",
+
+                    entity_name=
+                    existing.get(
+                        "customer_name",
+                        "Customer",
+                    ),
+
+                    email_role=
+                    email_data.get(
+                        "label",
+                        email_key,
+                    ),
+                )
+            )
+
+            verification_fields.append(
+                {
+                    "key":
+                        email_key,
+
+                    "label":
+                        email_data.get(
+                            "label",
+                            email_key,
+                        ),
+
+                    "email":
+                        email_address,
+
+                    "verified":
+                        False,
+
+                    "otp_sent":
+                        sent,
+                }
+            )
+
+        return {
+            "verification_required":
+                True,
+
+            "updated":
+                False,
+
+            "registration_id":
+                registration[
+                    "registration_id"
+                ],
+
+            "entity_type":
+                "customer",
+
+            "operation_type":
+                "email_update",
+
+            "entity_id":
+                customer_id,
+
+            "entity_name":
+                existing.get(
+                    "customer_name",
+                    "Customer",
+                ),
+
+            "expires_at":
+                registration.get(
+                    "expires_at"
+                ),
+
+            "verification_fields":
+                verification_fields,
+
+            "message":
+                (
+                    "OTP sent to changed "
+                    "Customer email address."
+                ),
         }
